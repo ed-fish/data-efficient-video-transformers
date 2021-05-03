@@ -1,0 +1,23 @@
+batch_size: 32
+input_csv:  /home/ed/PhD/Embeddingator/embedding_overview.csv
+
+# which expert to use, image, motion, location, depth
+experts: ["motion"]
+learning_rate: 0.05
+epochs: 10
+
+input_shape: 512
+output_shape: 128
+bottle_neck: 512
+device: 0
+# number of layers to train with
+num_layers: 2 
+data_size: 100
+# Method for pooling img, depth, and location embeddings. 
+# avg, max, random (select a random frame each time)
+pooling_technique: "avg"
+
+multi_crop_temporal: False
+
+resume: False
+resume_path: ""
