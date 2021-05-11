@@ -1,8 +1,9 @@
-batch_size: 32
-input_csv:  /home/ed/PhD/Embeddingator/embedding_overview.csv
+---
+batch_size: 1
+train_csv:  /home/ed/PhD/mmodal-moments-in-time/example.csv
 
 # which expert to use, image, motion, location, depth
-experts: ["motion"]
+experts: ["motion", "image", "location", "depth"]
 learning_rate: 0.05
 epochs: 10
 
@@ -21,3 +22,47 @@ multi_crop_temporal: False
 
 resume: False
 resume_path: ""
+noise_multiplier: 10
+
+# Flip is the probability an image will be flipp
+flip: 0.5
+
+# Jitter val is random augmentation between 0, 2
+jitter: 50
+
+# Grey is probability the img will be converted
+gray: 0.2 # gray used rather than grey for consi
+
+# Noise is the probability that the noise multip
+noise: 0.3
+
+# Location of csv file output
+csv: "/database.csv"
+
+# Number of frames to skip : used as if frames %
+frames: 2
+frame_length: 16
+tidy_start: 0
+
+# Normalisation for multi modes
+
+# Resnet
+image_norm:
+        mean: [0.485, 0.456, 0.406]
+        std: [0.229, 0.224, 0.225]
+
+depth_norm:
+        mean: [0.485, 0.456, 0.406]
+        std: [0.229, 0.224, 0.225]
+
+# Resnet 3D 18 - kinetics 400 - clipp acc@5 75.4
+video_norm:
+        mean: [0.43216, 0.394666, 0.37645]
+        std: [0.22803, 0.22145, 0.216989]
+
+location_norm:
+        mean: [0.485, 0.456, 0.406]
+        std: [0.229, 0.224, 0.225]
+
+# Which GPU to use (for parallel use 0)
+gpu: 0
