@@ -1,13 +1,16 @@
 ---
-batch_size: 1
+batch_size: 2
 train_csv:  /home/ed/PhD/mmodal-moments-in-time/example.csv
+train_root: /home/ed/PhD/Embeddingator/output/training/
+val_root: /home/ed/PhD/Embeddingator/output/validation/
 
 # which expert to use, image, motion, location, depth
-experts: ["motion", "image", "location", "depth"]
-learning_rate: 0.05
+experts: ["motion", "image", "location"]
+learning_rate: 0.005
 epochs: 10
 
-input_shape: 512
+expert_dim_size: 1028
+input_shape: 4608
 output_shape: 128
 bottle_neck: 512
 device: 0
@@ -16,7 +19,7 @@ num_layers: 2
 data_size: 100
 # Method for pooling img, depth, and location embeddings. 
 # avg, max, random (select a random frame each time)
-pooling_technique: "avg"
+aggregation: "concat"
 
 multi_crop_temporal: False
 

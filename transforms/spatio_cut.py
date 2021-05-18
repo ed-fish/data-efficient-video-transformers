@@ -37,7 +37,6 @@ class SpatioCut:
         output = []
         tempdir = tempfile.mkdtemp()
         tempvid = os.path.join(tempdir, "vid.mp4")
-        print(tempvid)
         self.convert_framerate(str(video_file), tempvid, frame_rate)
         self.split_video(tempvid, tempdir)
         if os.path.exists(tempvid):

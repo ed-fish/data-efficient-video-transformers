@@ -1,10 +1,10 @@
-import confuse 
+import confuse
 from dataloaders.MIT_dl import MIT_RAW_Dataset
-from models.contrastivemodel import SpatioTemporalContrastiveModel, NT_Xent
+from models.contrastivemodel import SpatioTemporalContrastiveModel
 from torch.utils.data import DataLoader
 import torch
+import pytorch_lightning as pl
 from transforms import img_transforms, spatio_cut, audio_transforms
-from models import models
 
 
 def train(config):
@@ -14,17 +14,19 @@ def train(config):
     model = SpatioTemporalContrastiveModel(config)
     # dataset = CustomDataset(config)
     dataset = MIT_RAW_Dataset(config)
-    print(len(dataset))
-    train_loader = DataLoader(dataset, bs, shuffle=False, drop_last=True)
-    for i, d in enumerate(train_loader):
-        print(d["x_i"]["video"].shape)
+    train_loader = DataLoader(dataset, bs, shuffle=False, drop_last=True,
+                                  num_workers=0)
+    # for label, data_x, data_y in train_loader:
+    #     model.training_step(label, data_x, data_y)
 
+    trainer = pl.Trainer(gpus=1)
+    trainer.fit(model, train_loader)
 
 def main():
+
     config = confuse.Configuration("mmodel-moments-in-time")
     config.set_file("config.yaml")
     train(config)
-
 
 if __name__ == "__main__":
     main()
