@@ -1,5 +1,5 @@
 ---
-batch_size: 2
+batch_size: 3
 train_csv:  /home/ed/PhD/mmodal-moments-in-time/example.csv
 train_root: /home/ed/PhD/Embeddingator/output/training/
 val_root: /home/ed/PhD/Embeddingator/output/validation/

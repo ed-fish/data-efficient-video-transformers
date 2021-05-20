@@ -23,6 +23,7 @@ AUDIO_EMBED = "Eaudio"
 
 class MIT_RAW_Dataset(Dataset):
     def __init__(self, config, pre_computed=True):
+        super().__init__()
         self.config = config
         self.pre_computed = pre_computed
         self.chunk_size = config['data_size'].get()
@@ -77,11 +78,12 @@ class MIT_RAW_Dataset(Dataset):
             sample_dict[s]["image"] = self.open_pt_return_list(os.path.join(x_folder, "img-embeddings"))
         return sample_dict
 
-
     def collect_embedding(self, video, config):
         norm = Normaliser(config)
         sc = SpatioCut()
         video_imgs = sc.cut_vid(video, 16)
+        if len(video_imgs) < 16:
+            return 0
 
         # Take two groups of frames randomly - may want to make this
         # a temporal distance in the future as per the spatio-temporal
@@ -124,12 +126,14 @@ class MIT_RAW_Dataset(Dataset):
         return sample_dict
 
     def __getitem__(self, idx):
+        print("getting item", idx)
         embed_dict = dict()
         embed_dict["label"] = self.data_frame.at[idx, "label"]
         embed_dict["video"] = self.data_frame.at[idx, "path"]
 
         if self.pre_computed:
             embedding_dict = self.collect_pre_computed_embeddings(embed_dict["video"], self.config, embed_dict["label"])
+            print(len(embedding_dict))
             x_i = embedding_dict["x_i"]
             x_j = embedding_dict["x_j"]
 
@@ -138,20 +142,21 @@ class MIT_RAW_Dataset(Dataset):
 
             for key, value in x_j.items():
                 x_j[key] = self.ee.return_expert_for_key_pretrained(key, value)
+
             return {'label': embedding_dict['label'], 'x_i': embedding_dict["x_i"], 'x_j': embedding_dict["x_j"]}
 
-        else:
-            embedding_dict = self.collect_embedding(embed_dict["video"], self.config)
-            x_i = embedding_dict["x_i"]
-            x_j = embedding_dict["x_j"]
+        # else:
+        #     embedding_dict = self.collect_embedding(embed_dict["video"], self.config)
+        #     x_i = embedding_dict["x_i"]
+        #     x_j = embedding_dict["x_j"]
 
-            for key, value in x_i.items():
-                x_i[key] = self.ee.return_expert_for_key(key, value)
+        #     for key, value in x_i.items():
+        #         x_i[key] = self.ee.return_expert_for_key(key, value)
 
-            for key, value in x_j.items():
-                x_j[key] = self.ee.return_expert_for_key(key, value)
+        #     for key, value in x_j.items():
+        #         x_j[key] = self.ee.return_expert_for_key(key, value)
 
-            return { 'label': embed_dict['label'], 'x_i': x_i, 'x_j': x_j }
+        #     return { 'label': embed_dict['label'], 'x_i': x_i, 'x_j': x_j }
 
 
 class CustomDataset(Dataset):

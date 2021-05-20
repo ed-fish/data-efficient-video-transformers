@@ -19,7 +19,7 @@ def train(config):
     # for label, data_x, data_y in train_loader:
     #     model.training_step(label, data_x, data_y)
 
-    trainer = pl.Trainer(gpus=1)
+    trainer = pl.Trainer(gpus=1, max_epochs=10)
     trainer.fit(model, train_loader)
 
 def main():
