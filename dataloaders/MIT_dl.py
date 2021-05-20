@@ -133,8 +133,7 @@ class MIT_RAW_Dataset(Dataset):
         
         if self.pre_computed:
             embedding_dict = self.collect_pre_computed_embeddings(embed_dict["video"], self.config, embed_dict["label"])
-            if self.embedding_dict < 2:
-                
+
             print(len(embedding_dict))
             x_i = embedding_dict["x_i"]
             x_j = embedding_dict["x_j"]
