@@ -1,7 +1,7 @@
 ---
 batch_size: 32
-train_csv: /mnt/fvpbignas/datasets/moments_in_time/Moments_in_Time_Raw/validationSet.csv
-train_root: /mnt/fvpbignas/datasets/moments_in_time/Moments_in_Time_Aug/validation/
+train_csv: /mnt/fvpbignas/datasets/moments_in_time/sample_data.csv
+train_root: /mnt/fvpbignas/datasets/moments_in_time/Moments_in_Time_Aug/training
 
 
 train_root: /home/ed/PhD/Embeddingator
