@@ -3,13 +3,14 @@ import pandas as pd
 import random
 import csv
 import torch
+import torch.nn.functional as F
 import os
 from collections import defaultdict
 from torch.utils.data import Dataset
-from transforms.img_transforms import ImgTransform
-from transforms.spatio_cut import SpatioCut
-from transforms.img_transforms import Normaliser
-from models.pretrained.models import EmbeddingExtractor
+# from transforms.img_transforms import ImgTransform
+# from transforms.spatio_cut import SpatioCut
+# from transforms.img_transforms import Normaliser
+# from models.pretrained.models import EmbeddingExtractor
 
 LABEL = "label"
 CHUNK = "chunk"
@@ -28,7 +29,7 @@ class MIT_RAW_Dataset(Dataset):
         self.pre_computed = pre_computed
         self.chunk_size = config['data_size'].get()
         self.data_frame = self.load_data()
-        self.ee = EmbeddingExtractor(self.config)
+        # self.ee = EmbeddingExtractor(self.config)
 
     def load_data(self):
         train_data_frame = pd.read_csv(self.config['train_csv'].get())
@@ -45,26 +46,24 @@ class MIT_RAW_Dataset(Dataset):
         return img_list
 
     def open_pt_return_list(self, folder_path):
-        print(folder_path)
         items = glob.glob(folder_path + "/*.pt")
         tensor_list = []
-        print(items)
         if len(items) > 1:
             for i in items:
-                x = torch.load(i)
-                tensor_list.append(x)
+                with torch.no_grad():
+                    x = torch.load(i, map_location="cpu").detach()
+                    tensor_list.append(x)
             return tensor_list
         else:
-            print(items[0])
-            return torch.load(items[0])
+            with torch.no_grad():
+                return torch.load(items[0], map_location="cpu").detach()
 
     # For precomputed embeddings that need to be loaded
     def collect_pre_computed_embeddings(self, video, config, label):
         sample_dict = defaultdict(dict)
-        video_name = os.path.basename(video).replace(".mp4", "")
-        root_dir = os.path.join(config["train_root"].get(), label, video_name)
-        dirs = glob.glob(root_dir + "/*/")
-        print(dirs)
+        # video_name = os.path.basename(video).replace(".mp4", "")
+        # root_dir = os.path.join(config["train_root"].get())
+        dirs = glob.glob(video + "/*/")
         x_i_folder = dirs.pop(random.randrange(len(dirs)))
         x_j_folder = dirs.pop(random.randrange(len(dirs)))
         for s in ["x_i", "x_j"]:
@@ -78,7 +77,7 @@ class MIT_RAW_Dataset(Dataset):
             sample_dict[s]["image"] = self.open_pt_return_list(os.path.join(x_folder, "img-embeddings"))
         return sample_dict
 
-    def collect_embedding(self, video, config):
+    """ def collect_embedding(self, video, config):
         norm = Normaliser(config)
         sc = SpatioCut()
         video_imgs = sc.cut_vid(video, 16)
@@ -123,28 +122,53 @@ class MIT_RAW_Dataset(Dataset):
         # sample_dict["x_j"]["depth"] = i_dep
         sample_dict["x_j"]["image"] = j_obj
 
-        return sample_dict
+        return sample_dict """
+
+
+    def return_expert_for_key_pretrained(self, key, raw_tensor):
+
+        if key == "image":
+            if len(raw_tensor) > 1:
+                output = torch.stack(raw_tensor)
+                output = output.transpose(0, 2)
+                output = F.adaptive_avg_pool1d(output, 1)
+                output = output.transpose(1, 0).squeeze(2)
+                output = output.squeeze(1)
+            else:
+                output = raw_tensor[0].unsqueeze(0)
+
+        if key == "motion" or key == "video":
+            output = raw_tensor[0].unsqueeze(0)
+
+        if key == "location":
+            if len(raw_tensor) > 1:
+                output = torch.stack(raw_tensor)
+                output = output.transpose(0, 2)
+                output = F.adaptive_avg_pool1d(output, 1)
+                output = output.transpose(1, 0).squeeze(2)
+                output = output.squeeze(1)
+            else:
+                output = raw_tensor[0].unsqueeze(0)
+
+        return output
 
     def __getitem__(self, idx):
-        print("getting item", idx)
-        embed_dict = dict()
-        embed_dict["label"] = self.data_frame.at[idx, "label"]
-        embed_dict["video"] = self.data_frame.at[idx, "path"]
+        label =  self.data_frame.at[idx, "label"]
+        path = self.data_frame.at[idx, "path"]
         
         if self.pre_computed:
-            embedding_dict = self.collect_pre_computed_embeddings(embed_dict["video"], self.config, embed_dict["label"])
+            embedding_dict = self.collect_pre_computed_embeddings(path, self.config, label)
 
-            print(len(embedding_dict))
             x_i = embedding_dict["x_i"]
             x_j = embedding_dict["x_j"]
 
             for key, value in x_i.items():
-                x_i[key] = self.ee.return_expert_for_key_pretrained(key, value)
+                x_i[key] = self.return_expert_for_key_pretrained(key, value)
 
             for key, value in x_j.items():
-                x_j[key] = self.ee.return_expert_for_key_pretrained(key, value)
+                x_j[key] = self.return_expert_for_key_pretrained(key, value)
 
-            return {'label': embedding_dict['label'], 'x_i': embedding_dict["x_i"], 'x_j': embedding_dict["x_j"]}
+            return {'label': embedding_dict['label'], 'x_i': x_i, 'x_j': x_j}
 
         # else:
         #     embedding_dict = self.collect_embedding(embed_dict["video"], self.config)
