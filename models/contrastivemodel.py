@@ -57,8 +57,8 @@ class SpatioTemporalContrastiveModel(pl.LightningModule):
             print(keys, values.shape)
 
     def training_step(self, batch, batch_idx):
-        x_i_experts = list(batch['x_i'].values())
-        x_j_experts = list(batch['x_j'].values())
+        x_i_experts = batch['x_i_experts']
+        x_j_experts = batch['x_j_experts']
         x_i_input = self.expert_aggregation(x_i_experts).squeeze(1)
         x_j_input = self.expert_aggregation(x_j_experts).squeeze(1)
 
@@ -67,5 +67,4 @@ class SpatioTemporalContrastiveModel(pl.LightningModule):
 
         loss = self.loss(x_i_out, x_j_out)
         self.log("training loss", loss)
-        print("loss", loss)
         return loss
