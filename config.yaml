@@ -1,11 +1,9 @@
 ---
-batch_size: 32
-train_csv: /mnt/fvpbignas/datasets/moments_in_time/sample_data.csv
+batch_size: 64
+train_csv: sanitized.csv
 train_root: /mnt/fvpbignas/datasets/moments_in_time/Moments_in_Time_Aug/training
-
-
-train_root: /home/ed/PhD/Embeddingator
-val_root: /home/ed/PhD/Embeddingator/output/validation/
+val_root: /mnt/fvpbignas/datasets/moments_in_time/Moments_in_Time_Aug/validation/
+numpy_csv: master_tensors1.pkl
 
 # which expert to use, image, motion, location, depth
 experts: ["motion", "image", "location"]
