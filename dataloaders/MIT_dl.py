@@ -1,5 +1,6 @@
 import glob
 import pandas as pd
+import ast
 import random
 import csv
 import torch
@@ -7,6 +8,7 @@ import torch.nn.functional as F
 import os
 from collections import defaultdict
 from torch.utils.data import Dataset
+import json
 # from transforms.img_transforms import ImgTransform
 # from transforms.spatio_cut import SpatioCut
 # from transforms.img_transforms import Normaliser
@@ -20,6 +22,34 @@ LOC_EMBED = "Elocation"
 VID_EMBED = "Evideo"
 DEPTH_EMBED = "Edepth"
 AUDIO_EMBED = "Eaudio"
+
+class CSV_Dataset(Dataset):
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+        self.data_frame = self.load_data()
+
+    def load_data(self):
+        data = pd.read_pickle(self.config['numpy_csv'].get())
+        data_frame = pd.DataFrame(data, columns=['label', 'path', 'x_i_experts', 'x_j_experts'])
+        return data_frame
+
+    def __len__(self):
+        return len(self.data_frame)
+
+
+    def __getitem__(self, idx):
+        label =  self.data_frame.at[idx, "label"]
+        experts_xi = self.data_frame.at[idx, "x_i_experts"]
+        experts_xj = self.data_frame.at[idx, "x_j_experts"]
+        
+        for index, i in enumerate(experts_xi):
+            experts_xi[index] = torch.FloatTensor(i)
+
+        for index, i in enumerate(experts_xj):
+            experts_xj[index] = torch.FloatTensor(i)
+            
+        return{'label': label, 'x_i_experts':experts_xi, 'x_j_experts' : experts_xj}
 
 
 class MIT_RAW_Dataset(Dataset):
@@ -51,12 +81,15 @@ class MIT_RAW_Dataset(Dataset):
         if len(items) > 1:
             for i in items:
                 with torch.no_grad():
-                    x = torch.load(i, map_location="cpu").detach()
+                    x = torch.load(i, map_location="cuda:3")
+                    x = x.detach()
                     tensor_list.append(x)
             return tensor_list
         else:
             with torch.no_grad():
-                return torch.load(items[0], map_location="cpu").detach()
+                x = torch.load(items[0], map_location="cuda:3")
+                x = x.detach()
+                return x
 
     # For precomputed embeddings that need to be loaded
     def collect_pre_computed_embeddings(self, video, config, label):
