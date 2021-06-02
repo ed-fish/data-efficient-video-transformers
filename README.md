@@ -1,13 +1,11 @@
-# mmodal-moments-in-time
-Multi-modal spatio-temporal contrastive learning experiments using pre-computed embeddings from Moments in Time.
-
-Experiments will include:
+# self-supervised-video
+Multi-modal spatio-temporal contrastive learning experiments using pre-computed embeddings.
 
 - Spatio-temporal contrastive learning with InfoNCE and NTXENT
 - Attention based transformer using spatio-temporal crops and dropped tokens
 - Mix of fusion methods including collaborative gating
 
-WIP
+WIP 
 
 bib tex for the dataset:
 
