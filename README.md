@@ -1,7 +1,7 @@
 # self-supervised-video
 Multi-modal spatio-temporal contrastive learning experiments using pre-computed embeddings.
 
-- Spatio-temporal contrastive learning with InfoNCE and NTXENT
+- Spatio-temporal contrastive learning with InfoNCE
 - Attention based transformer using spatio-temporal crops and dropped tokens
 - Mix of fusion methods including collaborative gating
 
