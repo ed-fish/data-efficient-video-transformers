@@ -8,19 +8,19 @@ import numpy as np
 import torch
 import pickle
 
-input_dir = "/home/ed/PhD/mmxtestdata/"
+input_dir = "/mnt/bigelow/scratch/mmx_aug/"
 
 def create_embedding_dict(filepath):
-
-    # name = os.path.basename(filepath)
-    # input_dir = os.path.join("/mnt/bigelow/scratch/mmx_aug", genre, name)
-    # dirs = os.listdir(input_dir)
-    # meta_data = os.path.join(input_dir, dirs[0], "meta.pkl")
-    # label = pickle.load(meta_data)
-    label = "test"
+    genre_name = filepath.split("/")[-3:-1]
+    orig_dir = os.path.join("/mnt/fvpbignas/datasets/mmx_raw/", genre_name[0], genre_name[1])
+    dirs = os.listdir(orig_dir)
+    meta_data = os.path.join(orig_dir, dirs[0], "meta.pkl")
+    with open(meta_data, "rb") as pickly:
+        label = pickle.load(pickly)
 
     # subdirs = [000,001,002] 
     scenes = glob.glob(filepath + "/*/")
+   
     # if len(subdirs) < 2:
     #     return False
 
@@ -32,6 +32,7 @@ def create_embedding_dict(filepath):
         # chunks is a list of filepaths [001/001, 001/002]
         chunks = glob.glob(scene + "/*/")
         chunk_dict = dict()
+       
         for chunk in chunks:
             expert_list = []
             for expert_dir in experts:
@@ -46,6 +47,7 @@ def create_embedding_dict(filepath):
                     expert_tensor = torch.load(expert_tensor[0], map_location="cpu")
                     expert_list.append(expert_tensor)
                 else:
+                    print("no audio")
                     # No audio embedding available
                     continue
             chunk_str = chunk.split("/")[-2]
@@ -54,7 +56,6 @@ def create_embedding_dict(filepath):
         scene_str = scene.split("/")[-2]
         scene_dict[os.path.basename(scene_str)] = chunk_dict
     out_dict = {"label": label, "name": name, "scenes": scene_dict}
-
     return out_dict
 
 def create_scene_dict(filepath):
@@ -93,12 +94,15 @@ def squish_folders(input_dir):
 
 
 def mp_handler():
-    p = mp.Pool(1)
+    p = mp.Pool(5)
+    data_list = []
+    count = 0
     working_dirs = squish_folders(input_dir)
     print(len(working_dirs))
 
     for result in p.imap(create_scene_dict, tqdm.tqdm(working_dirs, total=len(working_dirs))):
         if result:
+            print("completed one")
             print(result)
                 # print(data)
             # data_list.append(result)
