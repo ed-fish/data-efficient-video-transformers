@@ -7,12 +7,15 @@ import multiprocessing as mp
 import numpy as np
 import torch
 import pickle
+import resource
+
 
 input_dir = "/mnt/bigelow/scratch/mmx_aug/"
 
 def create_embedding_dict(filepath):
     genre_name = filepath.split("/")[-3:-1]
-    orig_dir = os.path.join("/mnt/fvpbignas/datasets/mmx_raw/", genre_name[0], genre_name[1])
+    orig_dir = filepath.replace("/mnt/bigelow/scratch/mmx_aug", "/mnt/fvpbignas/datasets/mmx_raw")
+    print(orig_dir)
     dirs = os.listdir(orig_dir)
     meta_data = os.path.join(orig_dir, dirs[0], "meta.pkl")
     with open(meta_data, "rb") as pickly:
@@ -60,6 +63,13 @@ def create_embedding_dict(filepath):
 
 def create_scene_dict(filepath):
     experts = ["location-embeddings", "img-embeddings", "video-embeddings", "audio-embeddings"]
+
+    orig_dir = filepath.replace("/mnt/bigelow/scratch/mmx_aug", "/mnt/fvpbignas/datasets/mmx_raw")
+   
+    dirs = os.listdir(orig_dir)
+    meta_data = os.path.join(orig_dir, "meta.pkl")
+    with open(meta_data, "rb") as pickly:
+        label = pickle.load(pickly)
     chunk_dict = dict()
     for chunk in glob.glob(filepath + "/*/"):
         expert_list = []
@@ -79,7 +89,8 @@ def create_scene_dict(filepath):
                 continue
         chunk_str = chunk.split("/")[-2]
         chunk_dict[os.path.basename(chunk_str)] = expert_list
-    scene_dict = {"scene":chunk, "data":chunk_dict}
+        scene = orig_dir.split("/")[-2]
+    scene_dict = {"path":orig_dir, "scene":scene, "label":label, "data":chunk_dict}
     return scene_dict
 
 
@@ -90,21 +101,21 @@ def squish_folders(input_dir):
             path = os.path.join(genres, movies)
             for scene in glob.glob(path + "/*/"):
                 all_files.append(scene)
-    return all_files
+    with open("cache.pkl", "wb") as cache:
+        pickle.dump(all_files, cache)
 
 
 def mp_handler():
-    p = mp.Pool(5)
+    p = mp.Pool(30)
     data_list = []
     count = 0
-    working_dirs = squish_folders(input_dir)
+    with open("cache.pkl", 'rb') as cache:
+        working_dirs = pickle.load(cache)
     print(len(working_dirs))
-
-    for result in p.imap(create_scene_dict, tqdm.tqdm(working_dirs, total=len(working_dirs))):
-        if result:
-            print("completed one")
-            print(result)
-                # print(data)
+    with open("mmx_tensors.pkl", 'wb') as pkly:
+        for result in p.imap(create_scene_dict, tqdm.tqdm(working_dirs, total=len(working_dirs))):
+            if result:
+                pickle.dump(result, pkly)
             # data_list.append(result)
             # if len(data_list) + count == 50000:
             #     with open("master_tensors1.pkl", "wb") as csv_file:
@@ -114,4 +125,7 @@ def mp_handler():
             #         count = 50001
 
 if __name__ == "__main__":
+    torch.multiprocessing.set_sharing_strategy('file_system')
+    rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
+    resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
     mp_handler()
