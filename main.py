@@ -26,10 +26,10 @@ def train(config):
     dataset = CSV_Dataset(config)
     print(len(dataset))
     train_loader = DataLoader(dataset, bs, shuffle=False, num_workers=0, pin_memory=True, drop_last=True)
-    trainer = pl.Trainer(gpus=1, max_epochs=10000, accelerator="ddp",callbacks=[LogCallback()])
+    trainer = pl.Trainer(gpus=1, max_epochs=100, accelerator="ddp",callbacks=[LogCallback()])
     # trainer.fit(model, train_loader)
-    trainer.test(model, train_loader,
-                 ckpt_path='/home/ed/self-supervised-video/lightning_logs/version_7/checkpoints/epoch=8379-step=837999.ckpt')
+    # trainer.test(model, train_loader,
+    #             ckpt_path='/home/ed/self-supervised-video/lightning_logs/version_39/checkpoints/epoch=1-step=781.ckpt')
 
 def main():
 
