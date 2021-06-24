@@ -4,8 +4,18 @@ from models.contrastivemodel import SpatioTemporalContrastiveModel
 from torch.utils.data import DataLoader
 import torch
 import pytorch_lightning as pl
+from pytorch_lightning.callbacks import Callback
+from torch.utils.tensorboard import SummaryWriter
 # from transforms import img_transforms, spatio_cut, audio_transforms
 
+class LogCallback(Callback):
+    def on_test_end(self, trainer, pl_module):
+        print("ended test")
+        writer = SummaryWriter()
+        embeddings = torch.stack(pl_module.proj_list)
+        writer.add_embedding(embeddings)
+        print("added projection")
+        
 
 def train(config):
     bs = config["batch_size"].get()
@@ -14,12 +24,12 @@ def train(config):
     model = SpatioTemporalContrastiveModel(config)
     # dataset = CustomDataset(config)
     dataset = CSV_Dataset(config)
-    train_loader = DataLoader(dataset, bs, shuffle=False, num_workers=0, pin_memory=True)
-    # for label, data_x, data_y in train_loader:
-    #     model.training_step(label, data_x, data_y)
-
-    trainer = pl.Trainer(gpus=4, max_epochs=100, accelerator="ddp")
-    trainer.fit(model, train_loader)
+    print(len(dataset))
+    train_loader = DataLoader(dataset, bs, shuffle=False, num_workers=0, pin_memory=True, drop_last=True)
+    trainer = pl.Trainer(gpus=1, max_epochs=10000, accelerator="ddp",callbacks=[LogCallback()])
+    # trainer.fit(model, train_loader)
+    trainer.test(model, train_loader,
+                 ckpt_path='/home/ed/self-supervised-video/lightning_logs/version_7/checkpoints/epoch=8379-step=837999.ckpt')
 
 def main():
 
