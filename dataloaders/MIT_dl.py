@@ -10,6 +10,7 @@ import os
 from collections import defaultdict
 from torch.utils.data import Dataset
 import json
+import numpy as np
 # from transforms.img_transforms import ImgTransform
 # from transforms.spatio_cut import SpatioCut
 # from transforms.img_transforms import Normaliser
@@ -113,12 +114,13 @@ class CSV_Dataset(Dataset):
                         ]
 
         label_list = np.zeros(21)
+        print(label)
 
 
-        for i, genre in enumerate(label):
+        for i, genre in enumerate(target_names):
             if genre == "Sci-fi" or genre == "ScienceFiction":
                 genre = "Science Fiction"
-            if genre in target_names:
+            if genre in label:
                 label_list[i] = 1
 
         return label_list
@@ -127,6 +129,8 @@ class CSV_Dataset(Dataset):
     def __getitem__(self, idx):
 
         label =  self.data_frame.at[idx, "label"]
+        label = self.collect_labels(label[0])
+        print(label)
         data = self.data_frame.at[idx, "data"]
         path = self.data_frame.at[idx, "path"]
         path = path.replace("/mnt/fvpbignas/datasets/mmx_raw", "/mnt/bigelow/scratch/mmx_aug")
@@ -180,6 +184,7 @@ class CSV_Dataset(Dataset):
             experts_xj = torch.cat(experts_xj, dim=-1)
 
         print(path)
+
             
         return {"label":label, "path":path, "scene":scene, "x_i_experts":experts_xi, "x_j_experts":experts_xj}
 
