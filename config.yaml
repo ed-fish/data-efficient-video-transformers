@@ -1,5 +1,5 @@
 ---
-batch_size: 64
+batch_size: 1
 train_csv: sanitized.csv
 train_root: /mnt/fvpbignas/datasets/moments_in_time/Moments_in_Time_Aug/training
 val_root: /mnt/fvpbignas/datasets/moments_in_time/Moments_in_Time_Aug/validation/
@@ -11,7 +11,7 @@ learning_rate: 0.005
 epochs: 10
 
 expert_dim_size: 1028
-input_shape: 4608
+input_shape: 2560
 output_shape: 128
 bottle_neck: 512
 device: 0
