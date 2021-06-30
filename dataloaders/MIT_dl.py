@@ -130,7 +130,7 @@ class CSV_Dataset(Dataset):
 
         label =  self.data_frame.at[idx, "label"]
         label = self.collect_labels(label[0])
-        print(label)
+        label = torch.FloatTensor(label)
         data = self.data_frame.at[idx, "data"]
         path = self.data_frame.at[idx, "path"]
         path = path.replace("/mnt/fvpbignas/datasets/mmx_raw", "/mnt/bigelow/scratch/mmx_aug")
