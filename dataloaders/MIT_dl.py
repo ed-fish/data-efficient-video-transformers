@@ -67,7 +67,7 @@ class CSV_Dataset(Dataset):
 
     def load_data(self):
         data = []
-        with open("mmx_tensors.pkl", "rb") as pkly:
+        with open("mmx_tensors_testing.pkl", "rb") as pkly:
             while 1:
                 try:
                     data.append(pickle.load(pkly))
@@ -75,11 +75,49 @@ class CSV_Dataset(Dataset):
                     break
         data_frame = pd.DataFrame(data)
         data_frame = self.clean_data(data_frame) 
+        print(len(data_frame))
 
         return data_frame
 
     def __len__(self):
         return len(self.data_frame)
+    
+    def collect_labels(self, label):
+	
+        target_names = ['Action',
+                        'Adventure',
+                        'Animation',
+                        'Biography',
+                        'Comedy',
+                        'Crime',
+                        'Documentary',
+                        'Drama',
+                        'Family',
+                        'Fantasy',
+                        'History',
+                        'Horror',
+                        'Music',
+                        'Mystery',
+                        'Romance',
+                        'Science Fiction',
+                        'Short',
+                        'Sport',
+                        'Thriller',
+                        'TV Movie',
+                        'War',
+                        'Western',
+                        ]
+
+        label_list = np.zeros(21)
+
+
+        for i, genre in enumerate(label):
+            if genre == "Sci-fi" or genre == "ScienceFiction":
+                genre = "Science Fiction"
+            if genre in target_names:
+                label_list[i] = 1
+
+        return label_list
 
 
     def __getitem__(self, idx):
