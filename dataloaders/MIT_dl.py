@@ -29,6 +29,7 @@ class CSV_Dataset(Dataset):
         super().__init__()
         self.config = config
         self.data_frame = self.load_data()
+        self.aggregation = self.config["aggregation"].get()
 
     def clean_data(self, data_frame):
 
@@ -77,6 +78,9 @@ class CSV_Dataset(Dataset):
         data_frame = self.clean_data(data_frame) 
         print(len(data_frame))
 
+        # for sub sample 
+        data_frame = data_frame.head(10000)
+
         return data_frame
 
     def __len__(self):
@@ -121,13 +125,21 @@ class CSV_Dataset(Dataset):
 
 
     def __getitem__(self, idx):
+
         label =  self.data_frame.at[idx, "label"]
         data = self.data_frame.at[idx, "data"]
+        path = self.data_frame.at[idx, "path"]
+        path = path.replace("/mnt/fvpbignas/datasets/mmx_raw", "/mnt/bigelow/scratch/mmx_aug")
+        path = glob.glob(path + "/*/")[0]
+        path = os.path.join(path, "imgs")
+        path = glob.glob(path + "/*")[1]
+        print(path)
+        scene = self.data_frame.at[idx, "scene"]
+
         experts_xi = []
         experts_xj = []
 
         # apply mix-up if less than 2 samples
-
         if len(data) < 2:
             data = list(data.values())[0]
             if idx == 0:
@@ -163,12 +175,13 @@ class CSV_Dataset(Dataset):
             for index, i in enumerate(x_j[1:-1]):
                 experts_xj.append(torch.FloatTensor(i[0]).squeeze())
 
-        experts_xi = torch.cat(experts_xi, dim=-1)
-        experts_xj = torch.cat(experts_xj, dim=-1)
+        if self.aggregation == "debugging":
+            experts_xi = torch.cat(experts_xi, dim=-1)
+            experts_xj = torch.cat(experts_xj, dim=-1)
 
-
-
-        return experts_xi, experts_xj
+        print(path)
+            
+        return {"label":label, "path":path, "scene":scene, "x_i_experts":experts_xi, "x_j_experts":experts_xj}
 
 
 class MIT_RAW_Dataset(Dataset):

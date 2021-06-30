@@ -11,7 +11,6 @@ epochs: 10
 
 expert_dim_size: 1028
 input_shape: 2560
-train_csv: 
 output_shape: 128
 bottle_neck: 512
 device: 0
