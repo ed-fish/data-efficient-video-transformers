@@ -27,7 +27,7 @@ class SpatioTemporalContrastiveModel(pl.LightningModule):
         output = F.relu(self.fc1(tensor))
         output = F.relu(self.fc2(output))
         embedding = F.relu(self.fc3(output))
-        output = self.fc4(output)
+        output = self.fc4(embedding)
 
         return embedding, output
 
