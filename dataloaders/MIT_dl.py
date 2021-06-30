@@ -16,15 +16,6 @@ import numpy as np
 # from transforms.img_transforms import Normaliser
 # from models.pretrained.models import EmbeddingExtractor
 
-LABEL = "label"
-CHUNK = "chunk"
-IMG_DIR = "imgs"
-IMG_EMBED = "Eimage"
-LOC_EMBED = "Elocation"
-VID_EMBED = "Evideo"
-DEPTH_EMBED = "Edepth"
-AUDIO_EMBED = "Eaudio"
-
 class CSV_Dataset(Dataset):
     def __init__(self, config):
         super().__init__()
