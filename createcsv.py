@@ -65,6 +65,8 @@ def create_scene_dict(filepath):
     experts = ["location-embeddings", "img-embeddings", "video-embeddings", "audio-embeddings"]
 
     orig_dir = filepath.replace("/mnt/bigelow/scratch/mmx_aug", "/mnt/fvpbignas/datasets/mmx_raw")
+
+    scene = orig_dir.split("/")[-2]
    
     dirs = os.listdir(orig_dir)
     meta_data = os.path.join(orig_dir, "meta.pkl")
@@ -75,44 +77,47 @@ def create_scene_dict(filepath):
         expert_list = []
         for expert_dir in experts:
             tens_dir = os.path.join(chunk, expert_dir)
-            if len(os.listdir(tens_dir)) > 1:
-                tensor_list = []
-                for tensor in glob.glob(tens_dir + "/*.pt"):
-                    tensor_list.append(torch.load(tensor, map_location="cpu"))
-                expert_list.append(tensor_list)
-            elif len(os.listdir(tens_dir)) == 1:
-                expert_tensor = glob.glob(tens_dir + "/*.pt")
-                expert_tensor = torch.load(expert_tensor[0], map_location="cpu")
-                expert_list.append(expert_tensor)
-            else:
-                # No audio embedding available
+            try:
+                if len(os.listdir(tens_dir)) > 1:
+                    tensor_list = []
+                    for tensor in glob.glob(tens_dir + "/*.pt"):
+                        tensor_list.append(torch.load(tensor, map_location="cpu"))
+                    expert_list.append(tensor_list)
+                elif len(os.listdir(tens_dir)) == 1:
+                    expert_tensor = glob.glob(tens_dir + "/*.pt")
+                    expert_tensor = torch.load(expert_tensor[0], map_location="cpu")
+                    expert_list.append(expert_tensor)
+                else:
+                    # No audio embedding available
+                    continue
+            except:
                 continue
         chunk_str = chunk.split("/")[-2]
         chunk_dict[os.path.basename(chunk_str)] = expert_list
-        scene = orig_dir.split("/")[-2]
     scene_dict = {"path":orig_dir, "scene":scene, "label":label, "data":chunk_dict}
     return scene_dict
 
 
 def squish_folders(input_dir):
     all_files = []
-    for genres in glob.glob(input_dir + "/*/"):
+    for genres in tqdm.tqdm(glob.glob(input_dir + "/*/")):
         for movies in os.listdir(genres):
             path = os.path.join(genres, movies)
             for scene in glob.glob(path + "/*/"):
                 all_files.append(scene)
+    print("length of files", len(all_files))
     with open("cache.pkl", "wb") as cache:
         pickle.dump(all_files, cache)
 
 
 def mp_handler():
-    p = mp.Pool(30)
+    p = mp.Pool(20)
     data_list = []
     count = 0
     with open("cache.pkl", 'rb') as cache:
         working_dirs = pickle.load(cache)
-    print(len(working_dirs))
-    with open("mmx_tensors.pkl", 'wb') as pkly:
+        print(len(working_dirs))
+    with open("mmx_tensors.pkl", 'ab') as pkly:
         for result in p.imap(create_scene_dict, tqdm.tqdm(working_dirs, total=len(working_dirs))):
             if result:
                 pickle.dump(result, pkly)
@@ -126,6 +131,7 @@ def mp_handler():
 
 if __name__ == "__main__":
     torch.multiprocessing.set_sharing_strategy('file_system')
-    rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
-    resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
+    # rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
+    # resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
     mp_handler()
+    # squish_folders(input_dir)
