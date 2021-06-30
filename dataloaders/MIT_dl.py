@@ -80,7 +80,7 @@ class CSV_Dataset(Dataset):
         print(len(data_frame))
 
         # for sub sample 
-        data_frame = data_frame.head(10000)
+        # data_frame = data_frame.head(10000)
 
         return data_frame
 
@@ -114,8 +114,6 @@ class CSV_Dataset(Dataset):
                         ]
 
         label_list = np.zeros(21)
-        print(label)
-
 
         for i, genre in enumerate(target_names):
             if genre == "Sci-fi" or genre == "ScienceFiction":
@@ -137,7 +135,6 @@ class CSV_Dataset(Dataset):
         path = glob.glob(path + "/*/")[0]
         path = os.path.join(path, "imgs")
         path = glob.glob(path + "/*")[1]
-        print(path)
         scene = self.data_frame.at[idx, "scene"]
 
         experts_xi = []
@@ -182,8 +179,6 @@ class CSV_Dataset(Dataset):
         if self.aggregation == "debugging":
             experts_xi = torch.cat(experts_xi, dim=-1)
             experts_xj = torch.cat(experts_xj, dim=-1)
-
-        print(path)
 
             
         return {"label":label, "path":path, "scene":scene, "x_i_experts":experts_xi, "x_j_experts":experts_xj}

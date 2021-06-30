@@ -1,6 +1,7 @@
 import confuse
 from dataloaders.MIT_dl import MIT_RAW_Dataset, CSV_Dataset
 from models.contrastivemodel import SpatioTemporalContrastiveModel
+from models.basicmlp import BasicMLP
 from torch.utils.data import DataLoader
 import torch
 import pytorch_lightning as pl
@@ -35,14 +36,15 @@ def train(config):
     bs = config["batch_size"].get()
     gpu = config["device"].get()
     device = torch.device(f"cuda:{gpu}")
-    model = SpatioTemporalContrastiveModel(config)
+    # model = SpatioTemporalContrastiveModel(config)
+    model = BasicMLP(config)
     # dataset = CustomDataset(config)
     dataset = CSV_Dataset(config)
-    train_loader = DataLoader(dataset, bs, shuffle=False, collate_fn=custom_collater, num_workers=0, pin_memory=True, drop_last=True)
-    trainer = pl.Trainer(gpus=1, max_epochs=100,callbacks=[LogCallback()])
-    # trainer.fit(model, train_loader)
-    trainer.test(model, train_loader,
-                 ckpt_path='/home/ed/self-supervised-video/lightning_logs/version_39/checkpoints/epoch=1-step=781.ckpt')
+    train_loader = DataLoader(dataset, bs, shuffle=False, collate_fn=custom_collater, num_workers=0, drop_last=True)
+    # trainer = pl.Trainer(gpus=1, max_epochs=100,callbacks=[LogCallback()])
+    trainer = pl.Trainer(gpus=1, max_epochs=100)
+    trainer.fit(model, train_loader, train_loader)
+    # trainer.test(model, train_loader,
 
 def main():
 
