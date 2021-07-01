@@ -39,13 +39,19 @@ def train(config):
     # model = SpatioTemporalContrastiveModel(config)
     model = BasicMLP(config)
     # dataset = CustomDataset(config)
+
     train_dataset = CSV_Dataset(config, test=False)
     val_dataset = CSV_Dataset(config, test=True)
+   
+    # train loader - mmx_tensors_train.pkl
+    # val loader - mmx_tensors_val.pkl
+
     train_loader = DataLoader(train_dataset, bs, shuffle=True, collate_fn=custom_collater, num_workers=0, drop_last=True)
     val_loader = DataLoader(val_dataset, bs, shuffle=False, collate_fn=custom_collater, num_workers=0, drop_last=True)
 
     # trainer = pl.Trainer(gpus=1, max_epochs=100,callbacks=[LogCallback()])
-    trainer = pl.Trainer(gpus=1, max_epochs=100)
+
+    trainer = pl.Trainer(gpus=3, max_epochs=100)
     trainer.fit(model, train_loader, val_loader)
     # trainer.test(model, train_loader,
 
@@ -57,4 +63,6 @@ def main():
 
 if __name__ == "__main__":
     torch.multiprocessing.set_start_method('spawn', force=True)
+    torch.multiprocessing.set_sharing_strategy('file_system')
     main()
+

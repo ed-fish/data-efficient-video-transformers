@@ -16,12 +16,12 @@ class BasicMLP(pl.LightningModule):
         self.batch_size = config["batch_size"].get()
         self.config = config
         # self.ee = EmbeddingExtractor(self.config)
-        self.f1 = torchmetrics.F1(num_classes=21)
+        self.f1 = torchmetrics.F1(num_classes=22)
 
         self.fc1 = nn.Linear(self.input_layer_size, self.input_layer_size)
         self.fc2 = nn.Linear(self.input_layer_size, self.bottleneck_size)
         self.fc3 = nn.Linear(self.bottleneck_size, self.bottleneck_size)
-        self.fc4 = nn.Linear(self.bottleneck_size, 21)
+        self.fc4 = nn.Linear(self.bottleneck_size, 22)
         self.loss = nn.BCEWithLogitsLoss()
 
     def forward(self, tensor):

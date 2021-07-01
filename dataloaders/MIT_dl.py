@@ -3,19 +3,14 @@ import pandas as pd
 import ast
 import random
 import csv
-import tqdm
 import torch
 import torch.nn.functional as F
-import pickle
+import _pickle as pickle
 import os
+import numpy as np
 from collections import defaultdict
 from torch.utils.data import Dataset
 import json
-import numpy as np
-# from transforms.img_transforms import ImgTransform
-# from transforms.spatio_cut import SpatioCut
-# from transforms.img_transforms import Normaliser
-# from models.pretrained.models import EmbeddingExtractor
 
 class CSV_Dataset(Dataset):
     def __init__(self, config, test=False):
@@ -29,37 +24,34 @@ class CSV_Dataset(Dataset):
     def clean_data(self, data_frame):
 
         print("cleaning data")
-        for i in tqdm.tqdm(range(len(data_frame))):
-            try:
-                data = data_frame.at[i, "data"]
-                data_chunk = list(data.values())           
-                for data in data_chunk:
-                    if len(data) < 4:
-                        print("dropping index with incomplete data", i, len(data))
+        for i in range(len(data_frame)):
+            
+            data = data_frame.at[i, "data"]
+            data_chunk = list(data.values())           
+            for data in data_chunk:
+                if len(data) < 4:
+                    print("dropping index with incomplete data", i, len(data))
+                    data_frame = data_frame.drop(i)
+                    continue
+                test = []
+                for f in data[1:-1]:
+                    f = f[0].squeeze()
+                    if f.dim() > 0:
+                        test.append(f)
+                    else:
                         data_frame = data_frame.drop(i)
                         continue
-                    test = []
-                    for f in data[1:-1]:
-                        f = f[0].squeeze()
-                        if f.dim() > 0:
-                            test.append(f)
-                        else:
-                            data_frame = data_frame.drop(i)
-                            continue
-                    try:
-                        test = torch.cat(test, dim=-1)
-                    except:
-                        data_frame = data_frame.drop(i)
-                        print("dropping", i)
-                        continue
-                    if test.shape[0] != 2560:
-                        print("dropping", i)
-                        data_frame = data_frame.drop(i)
-                        continue
-            except:
-                print("error loading data")
-                continue
-      
+                try:
+                    test = torch.cat(test, dim=-1)
+                except:
+                    data_frame = data_frame.drop(i)
+                    print("dropping", i)
+                    continue
+                if test.shape[0] != 2560:
+                    print("dropping", i)
+                    data_frame = data_frame.drop(i)
+                    continue
+        
         data_frame = data_frame.reset_index(drop=True)
         print(len(data_frame))
         
@@ -67,6 +59,7 @@ class CSV_Dataset(Dataset):
 
 
     def load_data(self):
+        print("loading data")
         data = []
         if self.istest:
             db = "mmx_tensors_val.pkl"
@@ -75,11 +68,14 @@ class CSV_Dataset(Dataset):
         with open(db, "rb") as pkly:
             while 1:
                 try:
-                    data.append(pickle.load(pkly))
+                    print("adding data")
+                    data = pickle.load(pkly)
+                    print(len(data))
                 except EOFError:
                     break
 
         data_frame = pd.DataFrame(data)
+        print(len(data_frame))
         data_frame = self.clean_data(data_frame) 
         print(len(data_frame))
 
@@ -117,7 +113,7 @@ class CSV_Dataset(Dataset):
                         'Western',
                         ]
 
-        label_list = np.zeros(21)
+        label_list = np.zeros(22)
 
         for i, genre in enumerate(target_names):
             if genre == "Sci-fi" or genre == "ScienceFiction":
@@ -136,9 +132,12 @@ class CSV_Dataset(Dataset):
         data = self.data_frame.at[idx, "data"]
         path = self.data_frame.at[idx, "path"]
         path = path.replace("/mnt/fvpbignas/datasets/mmx_raw", "/mnt/bigelow/scratch/mmx_aug")
-        path = glob.glob(path + "/*/")[0]
-        path = os.path.join(path, "imgs")
-        path = glob.glob(path + "/*")[1]
+        try:
+            path = glob.glob(path + "/*/")[0]
+            path = os.path.join(path, "imgs")
+            path = glob.glob(path + "/*")[1]
+        except:
+            path = "None"
         scene = self.data_frame.at[idx, "scene"]
 
         experts_xi = []
