@@ -9,17 +9,33 @@ import _pickle as pickle
 import os
 import numpy as np
 from collections import defaultdict
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, random_split, DataLoader
+import pytorch_lightning as pl
 import json
+from sklearn.model_selection import train_test_split
 
-class CSV_Dataset(Dataset):
-    def __init__(self, config, test=False):
+
+class MMXDataModule(pl.LightningDataModule):
+
+    def __init__(self, pickle_file, config):
         super().__init__()
-
-        self.istest = test
+        self.pickle_file = pickle_file
         self.config = config
-        self.data_frame = self.load_data()
-        self.aggregation = self.config["aggregation"].get()
+        self.bs = self.config["batch_size"].get()
+
+    def custom_collater(self, batch):
+
+        return {
+                'label':[x['label'] for x in batch],
+                'x_i_experts':[x['x_i_experts'] for x in batch],
+                'x_j_experts':[x['x_j_experts'] for x in batch],
+                'path':[x['path'] for x in batch]
+                }
+
+    def prepare_data(self):
+	    data = self.load_data(self.pickle_file)
+	    self.data = self.clean_data(data)
+
 
     def clean_data(self, data_frame):
 
@@ -57,32 +73,49 @@ class CSV_Dataset(Dataset):
         
         return data_frame
 
-
-    def load_data(self):
+    def load_data(self, db):
         print("loading data")
         data = []
-        if self.istest:
-            db = "mmx_tensors_val.pkl"
-        else:
-            db = "mmx_tensors_train.pkl"
         with open(db, "rb") as pkly:
             while 1:
                 try:
-                    print("adding data")
-                    data = pickle.load(pkly)
-                    print(len(data))
+                    # append if data serialised with open file
+                    data.append(pickle.load(pkly))
+                    # else data not streamed
+                    # data = pickle.load(pkly)
                 except EOFError:
                     break
 
         data_frame = pd.DataFrame(data)
-        print(len(data_frame))
-        data_frame = self.clean_data(data_frame) 
-        print(len(data_frame))
-
-        # for sub sample 
         # data_frame = data_frame.head(10000)
-
         return data_frame
+
+    def setup(self, stage):
+        if stage == 'fit' or stage is None:
+            full_data = self.data
+            self.train_data, self.val_data = train_test_split(full_data)
+            self.train_data = self.train_data.reset_index(drop=True)
+            self.val_data = self.val_data.reset_index(drop=True)
+
+    def train_dataloader(self):
+        return DataLoader(CSV_Dataset(self.train_data, self.config), self.bs, shuffle=True, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
+
+    def val_dataloader(self):
+        return DataLoader(CSV_Dataset(self.train_data, self.config), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
+    # For now use validation until proper test split obtained
+    def test_dataloader(self):
+        return DataLoader(CSV_Dataset(self.train_data, self.config), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
+
+
+
+class CSV_Dataset(Dataset):
+    def __init__(self, data, config):
+        super().__init__()
+
+        self.config = config
+        self.data_frame = data
+        self.aggregation = self.config["aggregation"].get()
+
 
     def __len__(self):
         return len(self.data_frame)

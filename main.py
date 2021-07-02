@@ -1,5 +1,5 @@
 import confuse
-from dataloaders.MIT_dl import MIT_RAW_Dataset, CSV_Dataset
+from dataloaders.MIT_dl import MIT_RAW_Dataset, CSV_Dataset, MMXDataModule
 from models.contrastivemodel import SpatioTemporalContrastiveModel
 from models.basicmlp import BasicMLP
 from torch.utils.data import DataLoader
@@ -22,15 +22,6 @@ class LogCallback(Callback):
         writer.add_embedding(embeddings, label_img=imgs)
         print("added projection")
         
-def custom_collater(batch):
-
-    return {
-            'label':[x['label'] for x in batch],
-            'x_i_experts':[x['x_i_experts'] for x in batch],
-            'x_j_experts':[x['x_j_experts'] for x in batch],
-            'path':[x['path'] for x in batch]
-            }
-
 
 def train(config):
     bs = config["batch_size"].get()
@@ -39,20 +30,21 @@ def train(config):
     # model = SpatioTemporalContrastiveModel(config)
     model = BasicMLP(config)
     # dataset = CustomDataset(config)
+    dm = MMXDataModule("mmx_tensors_testing.pkl", config)
 
-    train_dataset = CSV_Dataset(config, test=False)
-    val_dataset = CSV_Dataset(config, test=True)
+    # train_dataset = CSV_Dataset(config, test=False)
+    # val_dataset = CSV_Dataset(config, test=True)
    
     # train loader - mmx_tensors_train.pkl
     # val loader - mmx_tensors_val.pkl
 
-    train_loader = DataLoader(train_dataset, bs, shuffle=True, collate_fn=custom_collater, num_workers=0, drop_last=True)
-    val_loader = DataLoader(val_dataset, bs, shuffle=False, collate_fn=custom_collater, num_workers=0, drop_last=True)
+    # train_loader = DataLoader(train_dataset, bs, shuffle=True, collate_fn=custom_collater, num_workers=1, drop_last=True)
+    # val_loader = DataLoader(val_dataset, bs, shuffle=False, collate_fn=custom_collater, num_workers=0, drop_last=True)
 
     # trainer = pl.Trainer(gpus=1, max_epochs=100,callbacks=[LogCallback()])
 
-    trainer = pl.Trainer(gpus=3, max_epochs=100)
-    trainer.fit(model, train_loader, val_loader)
+    trainer = pl.Trainer(gpus=[2], max_epochs=100)
+    trainer.fit(model, dm)
     # trainer.test(model, train_loader,
 
 def main():
