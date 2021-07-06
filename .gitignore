@@ -1,1 +1,4 @@
 lightninglogs/
+**/__pycache__
+**/mmx_tensors*
+

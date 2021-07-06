@@ -1,9 +1,8 @@
 ---
-batch_size: 64
-train_csv: sanitized.csv
+batch_size: 1024
 train_root: /mnt/fvpbignas/datasets/moments_in_time/Moments_in_Time_Aug/training
 val_root: /mnt/fvpbignas/datasets/moments_in_time/Moments_in_Time_Aug/validation/
-numpy_csv: master_tensors1.pkl
+numpy_csv: mmx_tensors.pkl
 
 # which expert to use, image, motion, location, depth
 experts: ["motion", "image", "location"]
@@ -11,7 +10,7 @@ learning_rate: 0.005
 epochs: 10
 
 expert_dim_size: 1028
-input_shape: 4608
+input_shape: 2560
 output_shape: 128
 bottle_neck: 512
 device: 0
