@@ -1,5 +1,5 @@
 ---
-batch_size: 64
+batch_size: 1024
 train_root: /mnt/fvpbignas/datasets/moments_in_time/Moments_in_Time_Aug/training
 val_root: /mnt/fvpbignas/datasets/moments_in_time/Moments_in_Time_Aug/validation/
 numpy_csv: mmx_tensors.pkl
