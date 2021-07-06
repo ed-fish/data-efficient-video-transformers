@@ -32,10 +32,9 @@ class MMXDataModule(pl.LightningDataModule):
                 'path':[x['path'] for x in batch]
                 }
 
-    def prepare_data(self):
-	    data = self.load_data(self.pickle_file)
-	    self.data = self.clean_data(data)
-
+    # def prepare_data(self):
+    #    data = self.load_data(self.pickle_file)
+    #    self.data = self.clean_data(data)
 
     def clean_data(self, data_frame):
 
@@ -44,6 +43,9 @@ class MMXDataModule(pl.LightningDataModule):
             
             data = data_frame.at[i, "data"]
             data_chunk = list(data.values())           
+            if len(data_chunk) == 0:
+                data_frame = data_frame.drop(i)
+                continue
             for data in data_chunk:
                 if len(data) < 4:
                     print("dropping index with incomplete data", i, len(data))
@@ -80,9 +82,9 @@ class MMXDataModule(pl.LightningDataModule):
             while 1:
                 try:
                     # append if data serialised with open file
-                    data.append(pickle.load(pkly))
+                    # data.append(pickle.load(pkly))
                     # else data not streamed
-                    # data = pickle.load(pkly)
+                    data = pickle.load(pkly)
                 except EOFError:
                     break
 
@@ -91,6 +93,9 @@ class MMXDataModule(pl.LightningDataModule):
         return data_frame
 
     def setup(self, stage):
+
+        data = self.load_data(self.pickle_file)
+        self.data = self.clean_data(data)
         if stage == 'fit' or stage is None:
             full_data = self.data
             self.train_data, self.val_data = train_test_split(full_data)
@@ -177,14 +182,18 @@ class CSV_Dataset(Dataset):
         experts_xj = []
 
         # apply mix-up if less than 2 samples
+        if len(data) < 1:
+            print(len(data))
         if len(data) < 2:
             data = list(data.values())[0]
+            # data = list(data.values())
             if idx == 0:
                 idmx = idx + 1
             else:
                 idmx = idx - 1
             mix_up_data = self.data_frame.at[idmx , "data"]
             mix_up_data = list(mix_up_data.values())[0]
+            # mix_up_data = list(mix_up_data.values())
 
             # experts_xi = torch.FloatTensor(data[2][0]).squeeze()
             # mixed_tensor = data[2][0] * 0.2 + experts_xi * (1 - 0.2)

@@ -30,7 +30,7 @@ def train(config):
     # model = SpatioTemporalContrastiveModel(config)
     model = BasicMLP(config)
     # dataset = CustomDataset(config)
-    dm = MMXDataModule("mmx_tensors_testing.pkl", config)
+    dm = MMXDataModule("mmx_tensors_train.pkl", config)
 
     # train_dataset = CSV_Dataset(config, test=False)
     # val_dataset = CSV_Dataset(config, test=True)
@@ -43,7 +43,7 @@ def train(config):
 
     # trainer = pl.Trainer(gpus=1, max_epochs=100,callbacks=[LogCallback()])
 
-    trainer = pl.Trainer(gpus=[2], max_epochs=100)
+    trainer = pl.Trainer(gpus=[1], max_epochs=100)
     trainer.fit(model, dm)
     # trainer.test(model, train_loader,
 
@@ -54,7 +54,7 @@ def main():
     train(config)
 
 if __name__ == "__main__":
-    torch.multiprocessing.set_start_method('spawn', force=True)
+    # torch.multiprocessing.set_start_method('spawn', force=True)
     torch.multiprocessing.set_sharing_strategy('file_system')
     main()
 
