@@ -1,4 +1,4 @@
-lightninglogs/
+**/lightninglogs/
 .gitignore
 **/__pycache__
 **/mmx_tensors*
