@@ -1,5 +1,5 @@
 ---
-batch_size: 1020
+batch_size: 3
 
 # which expert to use, image, motion, location, depth
 # experts: ["motion", "image", "location"]

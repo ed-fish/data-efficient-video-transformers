@@ -1,4 +1,5 @@
 import torch
+import confuse
 import torch.nn as nn
 from torch.nn import Transformer
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
@@ -6,7 +7,7 @@ from dataloaders.MIT_Temporal_dl import MITDataset, MITDataModule
 import math
 
 class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, dropout=0.1, maxlen=5000):
+    def __init__(self, d_model, dropout=0.1, max_len=5000):
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
         pe = torch.zeros(max_len, d_model)
@@ -33,7 +34,6 @@ class TransformerModel(nn.Module):
         self.encoder = nn.Embedding(ntoken, ninp)
         self.ninp = ninp
         self.decoder = nn.Linear(ninp, ntoken)
-
         self.init_weights()
 
     def generate_square_subsequent_mask(self, sz):
@@ -48,13 +48,17 @@ class TransformerModel(nn.Module):
         self.decoder.weight.data.uniform_(-initrange, initrange)
 
     def forward(self, src, src_mask):
+        print(src.shape)
+        print(src)
         # SRC in NLP model referes to a vector representation of the word - this is learned while training the model. 
         # Options include:
         # - Just using the embeddings we have already
         # - Adding an additional linear layer
         # - Using bovw/knn and creating a sort of vocabulary from the expert embeddings
+
         #src = self.encoder(src) * math.sqrt(self.ninp)
         #src = self.encoder(src) * math.sqrt(self.ninp)
+
         src = self.pos_encoder(src)
         output = self.transformer_encoder(src, src_mask)
         output = self.decoder(output)
@@ -68,55 +72,56 @@ class TransformerModel(nn.Module):
 
 ##### Training ####
 
-ntokens = 304
-emsize = 2048
-nhid = 2048
-nlayers = 2
-nhead = 2
-dropout = 0.2
-model = TransformerModer(ntokens, emsize, nhead, nhid, nlayers, dropout).to(device)
-
-import time
-
-criterion = nn.CrossEntropyLoss()
-lr = 5.0
-optimizer = torch.optim.SGD(model.parameters(), lr=lr)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1.0, gamma=0.95)
-
-config = confuse.Configuration("mmodel-moments-in-time")
-config.set_file("config.yaml")
-dm = MITDataModule("data_processing/mit_tensors_train_wc.pkl", config)
-train_loader = dm.train_dataloader()
-
-
 
 def train():
+
+    ntokens = 304
+    emsize = 2048
+    nhid = 2048
+    nlayers = 2
+    nhead = 2
+    dropout = 0.2
+    device = torch.device("cuda:0")
+    model = TransformerModel(ntokens, emsize, nhead, nhid, nlayers, dropout).to(device)
+    criterion = nn.CrossEntropyLoss()
+    lr = 5.0
+    optimizer = torch.optim.SGD(model.parameters(), lr=lr)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1.0, gamma=0.95)
+
+    config = confuse.Configuration("mmodel-moments-in-time")
+    config.set_file("config.yaml")
+    dm = MITDataModule("data/mit/mit_tensors_train_wc.pkl","data/mit/mit_tensors_train_wc.pkl", config)
+    dm.prepare_data()
+    dm.setup(stage="fit")
+    print(model)
+    data_loader = dm.train_data_loader()
+    print(data_loader)
+
     model.train()
     total_loss = 0
-    src_mask = model.generate_square_subsequent_mask(data.size(0)).to(device)
-    for batch, i in enumerate(train_loader):
-        data = batch["x_i_experts"]
-        target = batch["labels"]
-        optimizer.zero_grad()
-        if data.size(0) != bptt:
-            src_mask = generate_square_subsequent_mask(data.size(0)).to(device)
-        output = model(data, src_mask)
-        loss = criterion(output.view(-1, ntokens), target)
-        loss.backward()
-        torch.nn.utils.clip_grad_norm(model.parameters(), 0.5)
-        optimizer.step()
 
-        total_loss += loss.item()
-        log_interval = 200
-        if batch % log_interval == 0 and batch > 0:
-            curr_loss = total_loss / log_interval
-            print(f"epoch {epoch}, loss {total_loss}")
-        total_loss = 0
+    for epoch in range(10):
+        print(epoch)
+        src_mask = model.generate_square_subsequent_mask(1024).to(device)
+        print(src_mask)
+        print("created src mask")
+        for batch in dm.train_dataloader():
+            data = batch["x_i_experts"]
+            target = batch["labels"]
+            optimizer.zero_grad()
+            if data.size(0) != bptt:
+                src_mask = generate_square_subsequent_mask(data.size(0)).to(device)
+            output = model(data, src_mask)
+            loss = criterion(output.view(-1, ntokens), target)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm(model.parameters(), 0.5)
+            optimizer.step()
+            total_loss += loss.item()
+            log_interval = 5
+            if batch % log_interval == 0 and batch > 0:
+                curr_loss = total_loss / log_interval
+                print(f"epoch {epoch}, loss {total_loss}")
+            total_loss = 0
 
-for epoch in range(1, 10):
-    train()
-    scheduler.step()
-
-
-
+train()
 
