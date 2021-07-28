@@ -45,7 +45,6 @@ class MITDataModule(pl.LightningDataModule):
             data = data_frame.at[i, "data"]
             drop = False
             for d in data.values():
-                print(d.keys())
                 if len(d.keys()) < 2:
                     drop = True
                 if not "img-embeddings" in d.keys():
@@ -113,22 +112,32 @@ class MITDataModule(pl.LightningDataModule):
         data_frame = pd.DataFrame(data)
         print("data loaded")
         print("length", len(data_frame))
-        # data_frame = data_frame.head(10000)
+        
+        # TODO remove - 64 Bx2 testing only
+        # data_frame = data_frame.head(128)
+
         return data_frame
 
     def setup(self, stage):
 
-        self.train_data = self.load_data(self.train_data)
-        self.train_data = self.clean_data(self.train_data)
+        if stage in (None, 'fit'):
+            print("*" * 10)
+            print("Setting up data_loader - train")
+            self.train_data = self.load_data(self.train_data)
+            self.train_data = self.clean_data(self.train_data)
 
-        self.val_data = self.load_data(self.val_data)
-        self.val_data = self.clean_data(self.val_data)
+        if stage in (None, 'test'):
+            print("*" * 10)
+            print("Setting up data_loader - test")
+            self.val_data = self.load_data(self.val_data)
+            self.val_data = self.clean_data(self.val_data)
 
     def train_dataloader(self):
-        return DataLoader(MITDataset(self.train_data, self.config), self.bs, shuffle=True, collate_fn=self.custom_collater, num_workers=0)
+        print("Loading train dataloader")
+        return DataLoader(MITDataset(self.train_data, self.config), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
 
     def val_dataloader(self):
-        return DataLoader(MITDataset(self.val_data, self.config), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=0)
+        return DataLoader(MITDataset(self.val_data, self.config), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
     # For now use validation until proper test split obtained
     def test_dataloader(self):
         return DataLoader(MITDataset(self.train_data, self.config), 1, shuffle=False, collate_fn=self.custom_collater, num_workers=0)
@@ -179,8 +188,11 @@ class MITDataset(Dataset):
         expert_list = []
 
         for i, d in enumerate(data.values()):
-            while i < 3:
+            if i < 3:
                 expert_list.append(self.load_tensor(d["img-embeddings"][0]))
+        expert_list = torch.cat(expert_list, dim=0)
+        expert_list = expert_list.unsqueeze(0)
+        label = torch.tensor([label])
 
         #for index, i in enumerate(x_i):
         #    print(i)
