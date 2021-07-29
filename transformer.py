@@ -4,6 +4,7 @@ import torch.nn as nn
 from torch.nn import Transformer
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 import torch.nn.functional as F
+import torchmetrics
 from dataloaders.MIT_Temporal_dl import MITDataset, MITDataModule
 import math
 import pytorch_lightning as pl
@@ -25,19 +26,93 @@ class PositionalEncoding(nn.Module):
         return self.dropout(x)
 
 
-class TransformerModel(pl.Module):
+class TransformerModel(pl.LightningModule):
 
     def __init__(self, ntoken, ninp, nhead, nhid, nlayers, dropout=0.5):
         super(TransformerModel, self).__init__()
-        self.model_type = 'Transformer'
-        self.pos_encoder = PositionalEncoding(ninp, dropout)
-        encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout)
-        self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
-        self.encoder = nn.Embedding(ntoken, ninp)
-        self.ninp = ninp
-        self.decoder = nn.Linear(ninp, ntoken)
 
+        self.criterion = nn.CrossEntropyLoss()
+
+        self.model_type = 'Transformer'
+        self.pos_encoder = PositionalEncoding(ninp, dropout).to(self.device)
+        encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout).to(self.device)
+        self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers).to(self.device)
+        self.encoder = nn.Embedding(ntoken, ninp).to(self.device)
+        self.ninp = ninp
+        self.lr = 0.005
+        self.accuracy = torchmetrics.Accuracy()
+        self.decoder = nn.Linear(ninp, ntoken)
         self.init_weights()
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.SGD(self.parameters(), lr=self.lr)
+        return optimizer
+
+    def shared_step(self, data, target):
+
+        data = torch.cat(data, dim=0)
+        target = torch.cat(target, dim=0)
+
+        # Permute to [ S, B, E ]
+        data = data.permute(1, 0, 2)
+        #print("after permute for SBE", data.shape)
+        #print(data[0])
+
+        # just for cases where drop_last==False
+        # ensures mask is same as batch size
+        #if data.size(0) != bptt:
+        src_mask = self.generate_square_subsequent_mask(data.size(0))
+        src_mask = src_mask.to(self.device)
+
+        output = self(data, src_mask)
+        #print("output_shape", output.shape)
+
+        # will reshape to [96, 305]
+        transform_t = output.view(-1, 305)
+
+        # options for classification
+        # average pooling + softmax
+
+        transform_t = transform_t.unsqueeze(0)
+        pooled_result = F.adaptive_avg_pool2d(transform_t, (32, 305))
+        pooled_result = pooled_result.squeeze(0)
+
+        # Cross Entropy includes softmax https://bit.ly/3f73RJ7
+        # pooled_result = F.log_softmax(pooled_result, dim=-1)
+
+        target = target.squeeze()
+
+        return pooled_result, target
+
+
+    def training_step(self, batch, batch_idx):
+        data = batch["experts"]
+        target = batch["label"]
+
+        data, target = self.shared_step(data, target)
+
+        # Concat sequence of data [ B, S, E ]
+        #print("prediction", torch.argmax(pooled_result, dim =1))
+        #print("target", target)
+
+        self.log('train_acc_step', self.accuracy(torch.argmax(F.log_softmax(data), dim=-1), target))
+
+        loss = self.criterion(data, target)
+        self.log("train_loss", loss, on_step=False, on_epoch=True)
+        torch.nn.utils.clip_grad_norm(self.parameters(), 0.5)
+
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+
+        data = batch["experts"]
+        target = batch["label"]
+
+        data, target = self.shared_step(data, target)
+        loss = self.criterion(data, target)
+
+        self.log("val_loss", loss, on_step=False, on_epoch=True)
+        return loss
 
     def generate_square_subsequent_mask(self, sz):
         mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
@@ -60,10 +135,12 @@ class TransformerModel(pl.Module):
         #src = self.encoder(src) * math.sqrt(self.ninp)
         #src = self.encoder(src) * math.sqrt(self.ninp)
 
+        src_mask = self.generate_square_subsequent_mask(3)
         src = self.pos_encoder(src)
+        src_mask = src_mask.to(self.device)
         output = self.transformer_encoder(src, src_mask)
         output = self.decoder(output)
-        output = F.softmax(output)
+        #output = F.softmax(output)
         return output
 
 
@@ -75,82 +152,22 @@ class TransformerModel(pl.Module):
 
 
 def train():
+    config = confuse.Configuration("mmodel-moments-in-time")
+    config.set_file("config.yaml")
 
+    dm = MITDataModule("data/mit/mit_tensors_train_wc.pkl","data/mit/mit_tensors_train_wc.pkl", config)
+
+    bptt = config["batch_size"].get()
     ntokens = 305
     emsize = 2048
     nhid = 2048
     nlayers = 4
     nhead = 4
-    dropout = 0.3
-    device = torch.device("cuda:2")
-    model = TransformerModel(ntokens, emsize, nhead, nhid, nlayers, dropout).to(device)
-    criterion = nn.CrossEntropyLoss()
-    lr = 0.25
-    optimizer = torch.optim.SGD(model.parameters(), lr=lr)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1.0, gamma=0.95)
+    dropout = 0.2
+    model = TransformerModel(ntokens, emsize, nhead, nhid, nlayers, dropout)
+    trainer = pl.Trainer(gpus=[2])
+    trainer.fit(model, datamodule=dm)
 
-    config = confuse.Configuration("mmodel-moments-in-time")
-    config.set_file("config.yaml")
-    dm = MITDataModule("data/mit/mit_tensors_train_wc.pkl","data/mit/mit_tensors_train_wc.pkl", config)
-    dm.setup(stage="fit")
-    data_loader = dm.train_dataloader()
-    bptt = config["batch_size"].get()
-
-    model.train()
-    total_loss = 0
-
-    src_mask = model.generate_square_subsequent_mask(3).to(device)
-    for epoch in range(10000):
-        for idx, batch in enumerate(data_loader):
-            data = batch["experts"]
-            target = batch["label"]
-
-            data = torch.cat(data, dim=0)
-            target = torch.cat(target, dim=0)
-            target = target.to(device)
-
-            # data must be transposed to sequenceBC from BSC
-            data = data.permute(1, 0, 2)
-            #print("after permute for SBE", data.shape)
-            #print(data[0])
-            
-            data = data.to(device)
-
-            #target = target.to(device)
-            optimizer.zero_grad()
-            if data.size(0) != bptt:
-                src_mask = model.generate_square_subsequent_mask(data.size(0)).to(device)
-            output = model(data, src_mask)
-            #print("output_shape", output.shape)
-
-            # will reshape to [96, 305]
-            transform_t = output.view(-1, ntokens)
-
-            # options for classification
-            # average pooling + softmax
-
-            transform_t = transform_t.unsqueeze(0)
-            pooled_result = F.adaptive_avg_pool2d(transform_t, (64, 305))
-            pooled_result = pooled_result.squeeze(0)
-
-            # Cross Entropy includes softmax https://bit.ly/3f73RJ7
-            # pooled_result = F.log_softmax(pooled_result, dim=-1)
-            
-            target = target.squeeze()
-            #print("prediction", torch.argmax(pooled_result, dim =1))
-            #print("target", target)
-            
-            loss = criterion(pooled_result, target)
-            loss.backward()
-            torch.nn.utils.clip_grad_norm(model.parameters(), 0.5)
-            optimizer.step()
-            total_loss += loss.item()
-            log_interval = 10
-            if idx % log_interval == 0 and idx > 0:
-                curr_loss = total_loss / log_interval
-                print(f"epoch {epoch},step {idx}, loss {total_loss}")
-            total_loss = 0
-        scheduler.step()
 
 train()
 

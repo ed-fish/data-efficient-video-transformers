@@ -53,7 +53,7 @@ class MITDataModule(pl.LightningDataModule):
                 print("dropping missing experts")
                 data_frame = data_frame.drop(i)
                 continue
-            
+
             data_chunk = list(data.values())
 
             if len(data_chunk) < 2:
@@ -90,10 +90,10 @@ class MITDataModule(pl.LightningDataModule):
                 #    print("dropping", i)
                 #    data_frame = data_frame.drop(i)
                 #    continue
-        
+
         data_frame = data_frame.reset_index(drop=True)
         print(len(data_frame))
-        
+
         return data_frame
 
     def load_data(self, db):
@@ -112,25 +112,19 @@ class MITDataModule(pl.LightningDataModule):
         data_frame = pd.DataFrame(data)
         print("data loaded")
         print("length", len(data_frame))
-        
+
         # TODO remove - 64 Bx2 testing only
-        # data_frame = data_frame.head(128)
+        data_frame = data_frame.head(1000)
 
         return data_frame
 
     def setup(self, stage):
 
-        if stage in (None, 'fit'):
-            print("*" * 10)
-            print("Setting up data_loader - train")
-            self.train_data = self.load_data(self.train_data)
-            self.train_data = self.clean_data(self.train_data)
-
-        if stage in (None, 'test'):
-            print("*" * 10)
-            print("Setting up data_loader - test")
-            self.val_data = self.load_data(self.val_data)
-            self.val_data = self.clean_data(self.val_data)
+        self.train_data = self.load_data(self.train_data)
+        self.train_data = self.clean_data(self.train_data)
+        
+        self.val_data = self.load_data(self.val_data)
+        self.val_data = self.clean_data(self.val_data)
 
     def train_dataloader(self):
         print("Loading train dataloader")
@@ -149,6 +143,7 @@ class MITDataset(Dataset):
 
         self.config = config
         self.data_frame = data
+        print(self.data_frame)
         self.aggregation = self.config["aggregation"].get()
         self.label_df = self.load_labels("/home/ed/self-supervised-video/data_processing/moments_categories.csv")
 
