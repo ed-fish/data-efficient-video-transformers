@@ -141,6 +141,7 @@ class TransformerModel(pl.LightningModule):
         output = self.transformer_encoder(src, src_mask)
         output = self.decoder(output)
         #output = F.softmax(output)
+        # Do not include softmax if nn.crossentropy as softmax included via NLLoss
         return output
 
 
@@ -163,9 +164,9 @@ def train():
     nhid = 2048
     nlayers = 4
     nhead = 4
-    dropout = 0.2
+    dropout = 0.1
     model = TransformerModel(ntokens, emsize, nhead, nhid, nlayers, dropout)
-    trainer = pl.Trainer(gpus=[2])
+    trainer = pl.Trainer(gpus=[3])
     trainer.fit(model, datamodule=dm)
 
 
