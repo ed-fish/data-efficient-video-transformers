@@ -9,7 +9,7 @@ from dataloaders.MIT_Temporal_dl import MITDataset, MITDataModule
 import math
 import pytorch_lightning as pl
 
-class PositionalEncoding(nn.Module):
+class PositionalEncoding(pl.LightningModule):
     def __init__(self, d_model, dropout=0.1, max_len=3):
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
@@ -28,24 +28,24 @@ class PositionalEncoding(nn.Module):
 
 class TransformerModel(pl.LightningModule):
 
-    def __init__(self, ntoken, ninp, nhead, nhid, nlayers, dropout=0.5):
+    def __init__(self, ntoken, ninp, nhead=4, nhid=2048, nlayers=4, learning_rate=0.005, dropout=0.5):
         super(TransformerModel, self).__init__()
+
+        self.save_hyperparameters('nhead','nhid','learning_rate','dropout')
 
         self.criterion = nn.CrossEntropyLoss()
 
         self.model_type = 'Transformer'
-        self.pos_encoder = PositionalEncoding(ninp, dropout).to(self.device)
-        encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout).to(self.device)
-        self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers).to(self.device)
+        self.pos_encoder = PositionalEncoding(ninp, dropout)
+        encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout)
+        self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
         self.encoder = nn.Embedding(ntoken, ninp).to(self.device)
-        self.ninp = ninp
-        self.lr = 0.005
         self.accuracy = torchmetrics.Accuracy()
         self.decoder = nn.Linear(ninp, ntoken)
         self.init_weights()
 
     def configure_optimizers(self):
-        optimizer = torch.optim.SGD(self.parameters(), lr=self.lr)
+        optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.learning_rate)
         return optimizer
 
     def shared_step(self, data, target):
@@ -132,8 +132,7 @@ class TransformerModel(pl.LightningModule):
         # - Adding an additional linear layer
         # - Using bovw/knn and creating a sort of vocabulary from the expert embeddings
 
-        #src = self.encoder(src) * math.sqrt(self.ninp)
-        #src = self.encoder(src) * math.sqrt(self.ninp)
+        #src = self.encoder(src) * math.sqrt(self.hparams.ninp)
 
         src_mask = self.generate_square_subsequent_mask(3)
         src = self.pos_encoder(src)
@@ -159,6 +158,7 @@ def train():
     dm = MITDataModule("data/mit/mit_tensors_train_wc.pkl","data/mit/mit_tensors_train_wc.pkl", config)
 
     bptt = config["batch_size"].get()
+    learning_rate = config["learning_rate"].get()
     ntokens = 305
     emsize = 2048
     nhid = 2048
