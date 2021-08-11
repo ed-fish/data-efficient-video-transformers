@@ -114,7 +114,7 @@ class MITDataModule(pl.LightningDataModule):
         print("length", len(data_frame))
 
         # TODO remove - 64 Bx2 testing only
-        data_frame = data_frame.head(1000)
+        data_frame = data_frame.head(168)
 
         return data_frame
 
@@ -202,7 +202,7 @@ class MITDataset(Dataset):
         if self.aggregation == "debugging":
             experts_xi = torch.cat(experts_xi, dim=-1)
             experts_xj = torch.cat(experts_xj, dim=-1)
-            
+
         return {"label":label, "path":path, "expert_list":expert_list}
 
 
