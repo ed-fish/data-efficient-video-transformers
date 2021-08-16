@@ -69,8 +69,8 @@ class TransformerModel(nn.Module):
 ##### Training ####
 
 ntokens = 304
-emsize = 2048
-nhid = 2048
+emsize = 512
+nhid = 512
 nlayers = 2
 nhead = 2
 dropout = 0.2

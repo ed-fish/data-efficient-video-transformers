@@ -1,16 +1,29 @@
 ---
-batch_size: 3
 
-# which expert to use, image, motion, location, depth
-# experts: ["motion", "image", "location"]
-learning_rate: 0.05
-epochs: 10
+# General params
+batch_size: 9
+learning_rate: 0.0025
+epochs: 300
+seq_len: 144
 
-input_shape: 2048
-hidden_layer: 1024
+# Optimisation
+dropout: 0.59
+momentum: 0.05
+weight_decay: 0.005
+scheduling: True
+
+# Architecure optimisation
+token_embedding: 2000
+hidden_layer: 2048
 projection_size: 512
-output_shape: 128
-device: 0
+output_shape: 512
+gpu: 3
+
+# Data input
+embedding: "test-img-embeddings"
+n_labels: 15
+input_shape: 2048
+n_heads: 2
 
 # Method for pooling img, depth, and location embeddings. 
 # avg, max, random (select a random frame each time)
