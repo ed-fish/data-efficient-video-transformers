@@ -148,15 +148,28 @@ class MMXDataset(Dataset):
             if len(expert_list) < self.seq_len:
                 # TODO reformat this code - only good for testing - or even better remove trailing "/" from data pre-processing.
                 try:
-                    tensor_path = d[list(d.keys())[0]][self.config["expert"]][frame]
-                    if len(tensor_path) == 1:
-                        tensor_path = d[list(d.keys())[0]][self.config["expert"]]
-                    expert_list.append(self.load_tensor(tensor_path))
+                    tensor_paths = d[list(d.keys())[0]][self.config["expert"]]
+                    if self.config["frame_agg"] == "none":
+                        tensor_path = tensor_paths[frame]
+                        if len(tensor_path) == 1:
+                            tensor_path = d[list(d.keys())[0]][self.config["expert"]]
+                            t = self.load_tensor(tensor_path)
+                            if self.config["expert"] == "audio-embeddings":
+                                t = t.unsqueeze(0)
+                        expert_list.append(t)
+                    elif self.config["frame_agg"] == "pool":
+                        pool_list = [self.load_tensor(x) for x in tensor_paths]
+                        pool_list = torch.stack(pool_list, dim=-1)
+                        pool_list = pool_list.unsqueeze(0)
+                        pooled_tensor = F.adaptive_avg_pool2d(pool_list, (1, self.config["input_shape"]), dim=-1)
+                        pooled_tensor = pooled_tensor.squeeze(0)
+                        expert_list.append(pooled_tensor)
+
                 except KeyError:
-                    print("key error")
                     continue
                 except IndexError:
-                    print("index error")
+                    continue
+                except IsADirectoryError:
                     continue
 
         while len(expert_list) < self.seq_len:

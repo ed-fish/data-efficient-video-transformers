@@ -32,7 +32,7 @@ def create_embedding_dict(filepath):
     # if len(subdirs) < 2:
     #     return False
 
-    experts = ["test-location-embeddings", "test-img-embeddings", "test-video-embeddings", "test-audio-embeddings"]
+    experts = ["test-location-embeddings", "test-img-embeddings", "test-video-embeddings", "audio-embeddings"]
     out_dict = OrderedDict()
     scene_dict = OrderedDict()
 
@@ -186,12 +186,12 @@ def mp_handler():
     #         if result:
     #             pickle.dump(result, pkly)
 
-    with open("mmx_tensors_train.pkl", 'ab') as pkly:
+    with open("train_tst.pkl", 'ab') as pkly:
         for result in p.imap(create_embedding_dict, tqdm.tqdm(train_data, total=len(train_data))):
             if result:
                 pickle.dump(result, pkly)
 
-    with open("mmx_tensors_val.pkl", 'ab') as pkly:
+    with open("val_tst.pkl", 'ab') as pkly:
         for result in p.imap(create_embedding_dict, tqdm.tqdm(test_data, total=len(test_data))):
            if result:
                pickle.dump(result, pkly)

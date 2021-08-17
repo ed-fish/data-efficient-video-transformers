@@ -1,8 +1,8 @@
 ---
 
 # General params
-batch_size: 9
-learning_rate: 0.0025
+batch_size: 10
+learning_rate: 0.005
 epochs: 300
 seq_len: 144
 
@@ -20,10 +20,12 @@ output_shape: 512
 gpu: 3
 
 # Data input
-embedding: "test-img-embeddings"
+embedding: "audio-embeddings"
 n_labels: 15
-input_shape: 2048
+input_shape: 128
 n_heads: 2
+# pool or None
+frame_agg: "none"
 
 # Method for pooling img, depth, and location embeddings. 
 # avg, max, random (select a random frame each time)

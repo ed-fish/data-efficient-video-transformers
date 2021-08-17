@@ -78,11 +78,13 @@ class TransformerModel(pl.LightningModule):
             return optimizer
 
     def shared_step(self, data, target):
+        print("seq len", len(data))
 
         data = torch.cat(data, dim=0)
         target = torch.cat(target, dim=0)
 
         # Permute to [ S, B, E ]
+        print(data.shape)
         data = data.permute(1, 0, 2)
         # print("after permute for SBE", data.shape)
         # print(data[0])
@@ -222,10 +224,12 @@ def train():
     emsize = config["input_shape"].get()
     nhid = 1850
     nlayers = 3
+    frame_agg = config["frame_agg"].get()
     nhead = config["n_heads"].get()
     dropout = config["dropout"].get()
 
     params = { "expert":expert,
+               "input_shape": config["input_shape"].get(),
                "epochs": epochs, 
                "batch_size": bptt,
                "seq_len": seq_len,
@@ -239,14 +243,17 @@ def train():
                "weight_decay":weight_decay, 
                "momentum":momentum,
                "expert":expert,
-               "token_embedding":token_embedding}
+               "token_embedding":token_embedding,
+               "frame_agg":frame_agg }
 
     wandb.init(config=params)
     config = wandb.config
-    dm = MMXDataModule("data_processing/trailer_temporal/mmx_tensors_train.pkl", "data_processing/trailer_temporal/mmx_tensors_val.pkl", config)
+    # dm = MMXDataModule("data_processing/trailer_temporal/mmx_tensors_train.pkl", "data_processing/trailer_temporal/mmx_tensors_val.pkl", config)
+    dm = MMXDataModule("data_processing/trailer_temporal/train_tst.pkl", "data_processing/trailer_temporal/val_tst.pkl", config)
+
     model = TransformerModel(ntokens, emsize, config["nhead"], nhid=config["nhid"],batch_size=config["batch_size"], nlayers=config["nlayers"], learning_rate=config["learning_rate"], 
                              dropout=config["dropout"], warmup_epochs=config["n_warm_up"], max_epochs=config["epochs"], seq_len=config["seq_len"], token_embedding=config["token_embedding"])
-    trainer = pl.Trainer(gpus=[0], callbacks=[lr_monitor], max_epochs=epochs, logger=wandb_logger)
+    trainer = pl.Trainer(gpus=[3], callbacks=[lr_monitor], max_epochs=epochs, logger=wandb_logger)
     trainer.fit(model, datamodule=dm)
 
 train()
