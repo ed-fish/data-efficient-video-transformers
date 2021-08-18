@@ -207,11 +207,10 @@ class MMX_Dataset(Dataset):
             # experts_xi = torch.FloatTensor(data[2][0]).squeeze()
             # mixed_tensor = data[2][0] * 0.2 + experts_xi * (1 - 0.2)
             # experts_xj = torch.FloatTensor(mixed_tensor).squeeze()
-            
+
             for index, i in enumerate(data[1:-1]):
                 if not isinstance(i, str):
                     i = i[0]
-                
                 # experts_xi.append(torch.FloatTensor(i[0]).squeeze())
                 tensor = torch.load(i) # this will load the first of a list
                 experts_xi.append(tensor.squeeze())
@@ -251,7 +250,6 @@ class MMX_Dataset(Dataset):
             experts_xi = torch.cat(experts_xi, dim=-1)
             experts_xj = torch.cat(experts_xj, dim=-1)
 
-            
         return {"label":label, "path":path, "scene":scene, "x_i_experts":experts_xi, "x_j_experts":experts_xj}
 
 

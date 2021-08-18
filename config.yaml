@@ -20,13 +20,17 @@ output_shape: 512
 gpu: 3
 
 # Data input
-embedding: "audio-embeddings"
+# img = 2048, location = 2048, motion = 512, audio = 128
+experts: ["test-location-embeddings", "test-img-embeddings"]
 n_labels: 15
-input_shape: 128
+input_shape: 4096
 n_heads: 2
 # pool or None
 frame_agg: "none"
+frame_id: 0
 
+# Multi modal settings
+mixing_method: "concat"
 # Method for pooling img, depth, and location embeddings. 
 # avg, max, random (select a random frame each time)
-aggregation: None
+# aggregation: "concat"

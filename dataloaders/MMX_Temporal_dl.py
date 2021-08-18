@@ -46,7 +46,6 @@ class MMXDataModule(pl.LightningDataModule):
         longest_seq = 0
         for i in range(len(data_frame)):
             data = data_frame.at[i, "scenes"]
-
             label = data_frame.at[i, "label"]
             n_labels = 0
             for l in label[0]:
@@ -133,44 +132,65 @@ class MMXDataset(Dataset):
         tensor = torch.load(tensor, map_location=torch.device('cpu'))
         return tensor
 
+    def return_expert_path(self, path, expert):
+        return path[list(path.keys())[0]][expert]
+
+    def retrieve_tensors(self, path, expert):
+        tensor_paths = self.return_expert_path(path, expert)
+        if expert == "test-img-embeddings" or expert == "test-location-embeddings":
+            tensor_paths = tensor_paths[self.config["frame_id"]]
+        if self.config["frame_agg"] == "none":
+            t = self.load_tensor(tensor_paths)
+            if expert == "audio-embeddings":
+                t = t.unsqueeze(0)
+        elif self.config["frame_agg"] == "pool":
+            pool_list = [self.load_tensor(x) for x in tensor_paths]
+            pool_list = torch.stack(pool_list, dim=-1)
+            pool_list = pool_list.unsqueeze(0)
+            pooled_tensor = F.adaptive_avg_pool2d(pool_list, (1, self.config["input_shape"]), dim=-1)
+            t = pooled_tensor.squeeze(0)
+        return t
+
+
     def __getitem__(self, idx):
+
+        # retrieve labels
         label =  self.data_frame.at[idx, "label"]
         if len(label) == 2:
+            # TODO fix labelling issue - hotfix here
             label = self.collect_labels(label[0])
         else:
             label = self.collect_labels(label)
-        label = torch.tensor(label).unsqueeze(0)
+        label = torch.tensor(label).unsqueeze(0)    # Covert label to tensor
         scenes = self.data_frame.at[idx, "scenes"]
         expert_list = []
-        frame = 0
+
+        # iterate through the scenes for the trailer
 
         for i, d in enumerate(scenes.values()):
-            if len(expert_list) < self.seq_len:
-                # TODO reformat this code - only good for testing - or even better remove trailing "/" from data pre-processing.
-                try:
-                    tensor_paths = d[list(d.keys())[0]][self.config["expert"]]
-                    if self.config["frame_agg"] == "none":
-                        tensor_path = tensor_paths[frame]
-                        if len(tensor_path) == 1:
-                            tensor_path = d[list(d.keys())[0]][self.config["expert"]]
-                            t = self.load_tensor(tensor_path)
-                            if self.config["expert"] == "audio-embeddings":
-                                t = t.unsqueeze(0)
-                        expert_list.append(t)
-                    elif self.config["frame_agg"] == "pool":
-                        pool_list = [self.load_tensor(x) for x in tensor_paths]
-                        pool_list = torch.stack(pool_list, dim=-1)
-                        pool_list = pool_list.unsqueeze(0)
-                        pooled_tensor = F.adaptive_avg_pool2d(pool_list, (1, self.config["input_shape"]), dim=-1)
-                        pooled_tensor = pooled_tensor.squeeze(0)
-                        expert_list.append(pooled_tensor)
+            try:
+                if len(expert_list) < self.seq_len:
+                    expert_tensor_list = []
 
-                except KeyError:
-                    continue
-                except IndexError:
-                    continue
-                except IsADirectoryError:
-                    continue
+                    # if there are multiple experts find out the mixing method
+                    if len(self.config["experts"]) > 1:
+                        if self.config["mixing_method"] == "none":
+                            assert False, "Mixing method must be defined for multi modal experts"
+                        for expert in self.config["experts"]:
+                            expert_tensor_list.append(self.retrieve_tensors(d, expert)) # Retrieve the tensors for each expert. 
+                        if self.config["mixing_method"] == "concat":
+                            cat_experts = torch.cat(expert_tensor_list, dim =-1) # concat experts for pre model
+                            print("cat experts", cat_experts.shape)
+                            expert_list.append(cat_experts)
+                    else: 
+                        expert_list.append(self.retrieve_tensors(d, self.config["experts"][0])) # otherwise return one expert
+
+            except KeyError:
+                continue
+            except IndexError:
+                continue
+            except IsADirectoryError:
+                continue
 
         while len(expert_list) < self.seq_len:
             expert_list.append(torch.zeros_like(expert_list[0]))
@@ -179,5 +199,49 @@ class MMXDataset(Dataset):
         expert_list = expert_list.unsqueeze(0)
 
         return {"label":label, "experts":expert_list}
+
+
+    # for each scene retrieve all the embeddings
+    # config["expert"] needs to change to a list so we can mix and match. 
+
+    # for expert in experts: cat (load expert 1, loade expert .., n)
+    # check same dimension with assert
+    # add concat experts to expert_list
+
+    # for i, d in enumerate(scenes.values()):
+    #     if len(expert_list) < self.seq_len:
+    #         # TODO reformat this code - only good for testing - or even better remove trailing "/" from data pre-processing.
+    #         try:
+    #             tensor_paths = d[list(d.keys())[0]][self.config["expert"]]
+    #             if self.config["frame_agg"] == "none":
+    #                 tensor_path = tensor_paths[frame]
+    #                 if len(tensor_path) == 1:
+    #                     tensor_path = d[list(d.keys())[0]][self.config["expert"]]
+    #                     t = self.load_tensor(tensor_path)
+    #                     if self.config["expert"] == "audio-embeddings":
+    #                         t = t.unsqueeze(0)
+    #                 expert_list.append(t)
+    #             elif self.config["frame_agg"] == "pool":
+    #                 pool_list = [self.load_tensor(x) for x in tensor_paths]
+    #                 pool_list = torch.stack(pool_list, dim=-1)
+    #                 pool_list = pool_list.unsqueeze(0)
+    #                 pooled_tensor = F.adaptive_avg_pool2d(pool_list, (1, self.config["input_shape"]), dim=-1)
+    #                 pooled_tensor = pooled_tensor.squeeze(0)
+    #                 expert_list.append(pooled_tensor)
+
+    #         except KeyError:
+    #             continue
+    #         except IndexError:
+    #             continue
+    #         except IsADirectoryError:
+    #             continue
+
+    # while len(expert_list) < self.seq_len:
+    #     expert_list.append(torch.zeros_like(expert_list[0]))
+
+    # expert_list = torch.cat(expert_list, dim=0)
+    # expert_list = expert_list.unsqueeze(0)
+
+    # return {"label":label, "experts":expert_list}
 
 

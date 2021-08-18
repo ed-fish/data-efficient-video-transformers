@@ -216,21 +216,25 @@ def train():
     momentum = config["momentum"].get()
     weight_decay = config["weight_decay"].get()
     token_embedding = config["token_embedding"].get()
-    expert = config["embedding"].get()
+    experts = config["experts"].get()
     epochs = config["epochs"].get()
     n_warm_up = 70
     seq_len = config["seq_len"].get()
     ntokens = config["n_labels"].get()
     emsize = config["input_shape"].get()
+    mixing_method = config["mixing_method"].get()
     nhid = 1850
     nlayers = 3
     frame_agg = config["frame_agg"].get()
     nhead = config["n_heads"].get()
     dropout = config["dropout"].get()
+    frame_id = config["frame_id"].get()
 
-    params = { "expert":expert,
+    params = { "experts":experts,
                "input_shape": config["input_shape"].get(),
-               "epochs": epochs, 
+               "mixing_method":mixing_method,
+               "epochs": epochs,
+               "frame_id":frame_id,
                "batch_size": bptt,
                "seq_len": seq_len,
                "nlayers":nlayers,
@@ -242,7 +246,6 @@ def train():
                "scheduling":scheduling,
                "weight_decay":weight_decay, 
                "momentum":momentum,
-               "expert":expert,
                "token_embedding":token_embedding,
                "frame_agg":frame_agg }
 
