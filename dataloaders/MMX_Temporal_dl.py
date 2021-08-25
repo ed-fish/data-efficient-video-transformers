@@ -180,8 +180,14 @@ class MMXDataset(Dataset):
                             expert_tensor_list.append(self.retrieve_tensors(d, expert)) # Retrieve the tensors for each expert. 
                         if self.config["mixing_method"] == "concat":
                             cat_experts = torch.cat(expert_tensor_list, dim =-1) # concat experts for pre model
-                            print("cat experts", cat_experts.shape)
+                            #expert_list.append(cat_experts)
+                            if self.config["cat_norm"] == True:
+                                cat_experts = F.normalize(cat_experts, p=2, dim=-1)
+                            if self.config["cat_softmax"] == True:
+                                cat_experts = F.softmax(cat_experts, dim=-1)
                             expert_list.append(cat_experts)
+                        elif self.config["mixing_method"] == "collab":
+                            expert_list.append(expert_tensor_list)
                     else: 
                         expert_list.append(self.retrieve_tensors(d, self.config["experts"][0])) # otherwise return one expert
 
@@ -191,12 +197,20 @@ class MMXDataset(Dataset):
                 continue
             except IsADirectoryError:
                 continue
+        if self.config["mixing_method"] == "collab":
 
-        while len(expert_list) < self.seq_len:
-            expert_list.append(torch.zeros_like(expert_list[0]))
+            while len(expert_list) < self.seq_len:
+                pad_list = []
+                for i in range(len(self.config["experts"])):
+                    pad_list.append(torch.zeros_like(expert_list[0][0]))
+                expert_list.append(pad_list)
+        
+        else:
+            while len(expert_list) < self.seq_len:
+                expert_list.append(torch.zeros_like(expert_list[0]))
 
-        expert_list = torch.cat(expert_list, dim=0)
-        expert_list = expert_list.unsqueeze(0)
+            expert_list = torch.cat(expert_list, dim=0)
+            expert_list = expert_list.unsqueeze(0)
 
         return {"label":label, "experts":expert_list}
 

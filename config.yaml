@@ -1,7 +1,7 @@
 ---
 
 # General params
-batch_size: 10
+batch_size: 64
 learning_rate: 0.005
 epochs: 300
 seq_len: 144
@@ -13,24 +13,35 @@ weight_decay: 0.005
 scheduling: True
 
 # Architecure optimisation
-token_embedding: 2000
-hidden_layer: 2048
+token_embedding: 128
+hidden_layer: 1024
 projection_size: 512
 output_shape: 512
 gpu: 3
 
 # Data input
 # img = 2048, location = 2048, motion = 512, audio = 128
-experts: ["test-location-embeddings", "test-img-embeddings"]
+experts: ["test-location-embeddings"]
+train_experts: ["location-embeddings"]
+test_experts: ["test-location-embeddings"]
+# experts: ["location-embeddings", "img-embeddings", "video-embeddings", "audio-embeddings"]
 n_labels: 15
-input_shape: 4096
+input_shape: 1024
 n_heads: 2
 # pool or None
 frame_agg: "none"
 frame_id: 0
 
 # Multi modal settings
-mixing_method: "concat"
+mixing_method: "collab"
+cat_norm: False
+cat_softmax: False
+
+# options = "pre-trans", "post-trans", "pre_contrast"
+architecture: "pre-contrast"
+
+# Self supervised options
+device: 1
 # Method for pooling img, depth, and location embeddings. 
 # avg, max, random (select a random frame each time)
-# aggregation: "concat"
+aggregation: "concat"

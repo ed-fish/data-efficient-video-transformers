@@ -9,6 +9,7 @@ import wandb
 from torchmetrics.functional import f1, auroc
 from pytorch_lightning.loggers import WandbLogger
 from dataloaders.MIT_Temporal_dl import MITDataset, MITDataModule
+from models.contrastivemodel import SpatioTemporalContrastiveModel
 from dataloaders.MMX_Temporal_dl import MMXDataset, MMXDataModule
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pl_bolts.optimizers.lr_scheduler import LinearWarmupCosineAnnealingLR
@@ -31,12 +32,112 @@ class PositionalEncoding(pl.LightningModule):
         x = x + self.pe[:x.size(0), :]
         return self.dropout(x)
 
+class CollaborativeGating(pl.LightningModule):
+    def __init__(self):
+
+        super(CollaborativeGating, self).__init__()
+        self.proj_input = 2048
+        self.proj_embedding_size = 2048
+        self.projection = nn.Linear(self.proj_input, self.proj_embedding_size)
+        self.cg = ContextGating(self.proj_input)
+        self.geu = GatedEmbeddingUnit(self.proj_input, 1024,  False)
+
+    def pad(self, tensor):
+
+#        pad = (2048 - tensor.shape[1]) / 2
+        tensor = tensor.unsqueeze(0)
+        curr_expert = F.interpolate(tensor, 2048)
+        curr_expert = curr_expert.squeeze(0)
+        return curr_expert
+
+
+    def forward(self, batch):
+        batch_list = []
+        for scenes in batch: # this will be batches
+            scene_list = []
+            # first expert popped off
+            for experts in scenes:
+                expert_attention_vec = []
+                for i in range(len(experts)):
+                    curr_expert = experts.pop(0)
+                    if curr_expert.shape[1] != 2048:
+                        curr_expert = self.pad(curr_expert)
+
+                    # compare with all other experts
+                    curr_expert = self.projection(curr_expert)
+                    t_i_list = []
+                    for c_expert in experts:
+                        # through g0 to get feature embedding t_i
+                        if c_expert.shape[1] != 2048:
+                            c_expert = self.pad(c_expert)
+                        c_expert = self.projection(c_expert)
+                        t_i = curr_expert + c_expert # t_i maps y1 to y2
+                        t_i_list.append(t_i)
+                    t_i_summed = torch.stack(t_i_list, dim=0).sum(dim=0) # all other features
+                    expert_attention = self.projection(t_i_summed) # attention vector for all comparrisons
+                    expert_attention_comp = self.cg(curr_expert, expert_attention) # gated version
+                    expert_attention_vec.append(expert_attention_comp)
+                    experts.append(curr_expert)
+                expert_attention_vec = torch.stack(expert_attention_vec, dim=0).sum(dim=0) # concat all attention vectors
+                expert_vector = self.geu(expert_attention_vec) # apply gated embedding
+                scene_list.append(expert_vector)
+            scene_stack = torch.stack(scene_list)
+            batch_list.append(scene_stack)
+        batch = torch.stack(batch_list, dim = 0)
+        batch = batch.squeeze(2)
+        return batch
+
+
+class GatedEmbeddingUnit(nn.Module):
+    def __init__(self, input_dimension, output_dimension, use_bn):
+        super(GatedEmbeddingUnit, self).__init__()
+
+        self.fc = nn.Linear(input_dimension, output_dimension)
+        # self.cg = ContextGating(output_dimension, add_batch_norm=use_bn)
+
+    def forward(self, x):
+        x = self.fc(x)
+        #x = self.cg(x)
+        x = F.normalize(x)
+        return x
+
+
+class ContextGating(nn.Module):
+    def __init__(self, dimension, add_batch_norm=True):
+        super(ContextGating, self).__init__()
+        # self.add_batch_norm = add_batch_norm
+        # self.batch_norm = nn.BatchNorm1d(dimension)
+        # self.batch_norm2 = nn.BatchNorm1d(dimension)
+
+    def forward(self, x, x1):
+
+        # if self.add_batch_norm:
+        #     x = self.batch_norm(x)
+        #     x1 = self.batch_norm2(x1)
+        t = x + x1
+        x = torch.cat((x, t), -1)
+        return F.glu(x, -1)
+
+# take a list of experts [y1, y2, y3, y4]
+# aggregate to a common dimension [128?, 512?, 1024?]
+# for each expert
+    # y1 -> [1, 1024]
+    # y2 -> [1, 1024]
+    # t1 = [y1 + y2] -> g0 -> [512]
+    # y1 + (try concat and adding) y3 -> t2
+    # y1 + (try concat and adding) y4 -> t3
+    # theta = t1 + t2 + t3
+    # y1^ = y1 hadamard sigmoid(theta)
+    # y1^, y2^, y3^, y4^ -> GEM -> L2 norm expert
+    # -> y of shape [1, 2048]
+
+
 class TransformerModel(pl.LightningModule):
 
-    def __init__(self, ntoken, ninp, nhead=4, nhid=2048, nlayers=4,batch_size=32, learning_rate=0.05, dropout=0.5, warmup_epochs=10, max_epochs=100, seq_len=5, momentum = 0, weight_decay=0, scheduling=False, token_embedding=15):
+    def __init__(self, ntoken, ninp, nhead=4, nhid=2048, nlayers=4,batch_size=32, learning_rate=0.05, dropout=0.5, warmup_epochs=10, max_epochs=100, seq_len=5, momentum = 0, weight_decay=0, scheduling=False, token_embedding=15, architecture=None, mixing=None):
         super(TransformerModel, self).__init__()
 
-        self.save_hyperparameters('nhead','nhid',"ninp", "ntoken",'learning_rate','batch_size','dropout', 'warmup_epochs', 'max_epochs', 'momentum','weight_decay', 'scheduling', 'token_embedding')
+        self.save_hyperparameters('nhead','nhid',"ninp", "ntoken",'learning_rate','batch_size','dropout', 'warmup_epochs', 'max_epochs', 'momentum','weight_decay', 'scheduling', 'token_embedding', "architecture")
 
         # self.criterion = nn.CrossEntropyLoss()
         self.criterion = nn.BCEWithLogitsLoss()
@@ -48,10 +149,14 @@ class TransformerModel(pl.LightningModule):
         encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout)
         self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
         self.encoder = nn.Embedding(ntoken, ninp).to(self.device)
+        self.self_sup_encoder = SpatioTemporalContrastiveModel()
         #self.accuracy = torchmetrics.F1(num_classes=15, threshold=0.1, top_k=3) # f1 weighted for mmx
         #self.accuracy = torchmetrics.Accuracy()
         self.decoder = nn.Linear(ninp, token_embedding)
         self.classifier = nn.Linear(token_embedding * seq_len, ntoken)
+        self.mixing = mixing
+        self.architecture = architecture
+        self.collab = CollaborativeGating()
         self.bs = batch_size
         self.init_weights()
 
@@ -77,10 +182,23 @@ class TransformerModel(pl.LightningModule):
         else:
             return optimizer
 
-    def shared_step(self, data, target):
-        print("seq len", len(data))
+    def contrastive_forward(self, data):
+        encoded_list = []
+        for d in data:
+            e, d = self.self_sup_encoder(d)
+            encoded_list.append(e)
+        return encoded_list
 
-        data = torch.cat(data, dim=0)
+    def shared_step(self, data, target):
+
+        if self.pre_contrastive:
+            data = self.contrastive_forward(data)
+
+        if self.mixing== "collab" and self.architecture=="pre-trans":
+            data = self.collab(data)
+        else:
+            data = torch.cat(data, dim=0)
+
         target = torch.cat(target, dim=0)
 
         # Permute to [ S, B, E ]
@@ -155,7 +273,6 @@ class TransformerModel(pl.LightningModule):
         loss = self.criterion(data, target)
 
         # acc_preds = self.preds_acc(data)
-
         self.log('val/f1@t1', f1(data, target.to(int), num_classes=15, average="weighted",threshold=-1.0), on_step=False, on_epoch=True)
         self.log('val/f1@t-1.5', f1(data, target.to(int), num_classes=15,average="weighted", threshold=-1.5), on_step=False, on_epoch=True)
         self.log('val/f1@t-2.0', f1(data, target.to(int), num_classes=15,average="weighted", threshold=-2.0),on_step=False, on_epoch=True)
@@ -229,6 +346,9 @@ def train():
     nhead = config["n_heads"].get()
     dropout = config["dropout"].get()
     frame_id = config["frame_id"].get()
+    cat_norm = config["cat_norm"].get()
+    cat_softmax = config["cat_softmax"].get()
+    architecture = config["architecture"].get()
 
     params = { "experts":experts,
                "input_shape": config["input_shape"].get(),
@@ -239,6 +359,8 @@ def train():
                "seq_len": seq_len,
                "nlayers":nlayers,
                "dropout":dropout,
+               "cat_norm": cat_norm,
+               "cat_softmax": cat_softmax,
                "nhid":nhid,
                "nhead":nhead,
                "n_warm_up":n_warm_up,
@@ -247,6 +369,7 @@ def train():
                "weight_decay":weight_decay, 
                "momentum":momentum,
                "token_embedding":token_embedding,
+               "architecture":architecture,
                "frame_agg":frame_agg }
 
     wandb.init(config=params)
@@ -255,7 +378,7 @@ def train():
     dm = MMXDataModule("data_processing/trailer_temporal/train_tst.pkl", "data_processing/trailer_temporal/val_tst.pkl", config)
 
     model = TransformerModel(ntokens, emsize, config["nhead"], nhid=config["nhid"],batch_size=config["batch_size"], nlayers=config["nlayers"], learning_rate=config["learning_rate"], 
-                             dropout=config["dropout"], warmup_epochs=config["n_warm_up"], max_epochs=config["epochs"], seq_len=config["seq_len"], token_embedding=config["token_embedding"])
+                             dropout=config["dropout"], warmup_epochs=config["n_warm_up"], max_epochs=config["epochs"], seq_len=config["seq_len"], token_embedding=config["token_embedding"], architecture=config["architecture"],mixing = config["mixing_method"])
     trainer = pl.Trainer(gpus=[3], callbacks=[lr_monitor], max_epochs=epochs, logger=wandb_logger)
     trainer.fit(model, datamodule=dm)
 

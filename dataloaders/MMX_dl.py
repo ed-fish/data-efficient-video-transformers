@@ -114,10 +114,10 @@ class MMXDataModule(pl.LightningDataModule):
         self.val_data = self.clean_data(self.val_data)
 
     def train_dataloader(self):
-        return DataLoader(MMX_Dataset(self.train_data, self.config), self.bs, shuffle=True, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
+        return DataLoader(MMX_Dataset(self.train_data, self.config, train=True), self.bs, shuffle=True, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
 
     def val_dataloader(self):
-        return DataLoader(MMX_Dataset(self.val_data, self.config), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
+        return DataLoader(MMX_Dataset(self.val_data, self.config, train=False), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
     # For now use validation until proper test split obtained
     def test_dataloader(self):
         return DataLoader(MMX_Dataset(self.train_data, self.config), 1, shuffle=False, collate_fn=self.custom_collater, num_workers=0)
@@ -125,12 +125,13 @@ class MMXDataModule(pl.LightningDataModule):
 
 
 class MMX_Dataset(Dataset):
-    def __init__(self, data, config):
+    def __init__(self, data, config, train=True):
         super().__init__()
 
         self.config = config
         self.data_frame = data
         self.aggregation = self.config["aggregation"].get()
+        self.train = train
 
 
     def __len__(self):
@@ -193,58 +194,65 @@ class MMX_Dataset(Dataset):
         experts_xj = []
 
         # apply mix-up if less than 2 samples
+        # keys here are the scenes ["000", "001", "002"] etc
+        # if there are less than 2 scenes in the sample we need to do something else. 
+
+        if self.train:
+            experts = self.config["train_experts"].get()
+        else:
+            experts = self.config["test_experts"].get()
         if len(data) < 2:
-            data = list(data.values())[0]
-            # data = list(data.values())
+            data = list(data.values())[0] # take the first index as its the only valid one
+            #data = list(data.values())
             if idx == 0:
                 idmx = idx + 1
             else:
                 idmx = idx - 1
             mix_up_data = self.data_frame.at[idmx , "data"]
-            mix_up_data = list(mix_up_data.values())[0]
-            # mix_up_data = list(mix_up_data.values())
+            mix_up_data = list(mix_up_data.values())[0] # take the first index of the sample either before or after e.g ["000"]
 
-            # experts_xi = torch.FloatTensor(data[2][0]).squeeze()
-            # mixed_tensor = data[2][0] * 0.2 + experts_xi * (1 - 0.2)
-            # experts_xj = torch.FloatTensor(mixed_tensor).squeeze()
+            # Now we have data = ["000"][experts] and mix_up_data = ["000"][experts]
 
-            for index, i in enumerate(data[1:-1]):
-                if not isinstance(i, str):
-                    i = i[0]
-                # experts_xi.append(torch.FloatTensor(i[0]).squeeze())
-                tensor = torch.load(i) # this will load the first of a list
-                experts_xi.append(tensor.squeeze())
+            for expert in experts:
+                expert_vec = data[expert]
+                if not isinstance(expert_vec, str):
+                    expert_vec = random.choice(expert_vec)
+                expert_vec = torch.load(expert_vec)
+                if len(expert_vec.shape) < 2:
+                    expert_vec = expert_vec.unsqueeze(0)
+                experts_xi.append(expert_vec)
 
-            for index, i in enumerate(mix_up_data[1:-1]):
+                expert_vec = mix_up_data[expert]
+                if not isinstance(expert_vec, str):
+                    expert_vec = random.choice(expert_vec)
+                expert_vec = torch.load(expert_vec)
+                if len(expert_vec.shape) < 2:
+                    expert_vec = expert_vec.unsqueeze(0)
+                experts_xj.append(expert_vec)
 
-                if not isinstance(i, str):
-                    i = i[0]
-                tensor = torch.load(i)
-                mixed_tensor = tensor * 0.2 + experts_xi[index] * (1 - 0.2)
-                mixed_tensor = mixed_tensor.squeeze()
-                experts_xj.append(mixed_tensor)
         else:
+            # select two random scenes as a positive pair
             x_i, x_j = random.sample(list(data.values()), 2)
-            # try:
-            #     experts_xi = torch.FloatTensor(x_i[2][0]).squeeze()
-            #    experts_xj = torch.FloatTensor(x_j[2][0]).squeeze()
-            # except:
-            #    print("error xi", idx, len(x_i))
-            #    print("error xj", idx, len(x_j))
-            #    print(x_i.shape)
-            #    print(x_j.shape)
-            for index, i in enumerate(x_i[1:-1]):
 
-                if not isinstance(i, str):
-                    i = i[0]
-                t = torch.load(i)
-                experts_xi.append(t.squeeze())
-            for index, i in enumerate(x_j[1:-1]):
+            # x_i["test-location"] etc are valid keys
 
-                if not isinstance(i, str):
-                    i = i[0]
-                t = torch.load(i)
-                experts_xj.append(t.squeeze())
+            for expert in experts:
+                expert_vec = x_i[expert]
+                if not isinstance(expert_vec, str):
+                    expert_vec = random.choice(expert_vec)
+                expert_vec = torch.load(expert_vec)
+                if len(expert_vec.shape) < 2:
+                    expert_vec = expert_vec.unsqueeze(0)
+                experts_xi.append(expert_vec)
+
+                expert_vec = x_j[expert]
+                if not isinstance(expert_vec, str):
+                    expert_vec = random.choice(expert_vec)
+                expert_vec = torch.load(expert_vec)
+                if len(expert_vec.shape) < 2:
+                    expert_vec = expert_vec.unsqueeze(0)
+                experts_xj.append(expert_vec)
+
 
         if self.aggregation == "debugging":
             experts_xi = torch.cat(experts_xi, dim=-1)

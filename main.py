@@ -1,5 +1,6 @@
 import confuse
 from dataloaders.MIT_dl import MIT_RAW_Dataset, MITDataset, MITDataModule
+from dataloaders.MMX_dl import MMX_Dataset, MMXDataModule
 from models.contrastivemodel import SpatioTemporalContrastiveModel, OnlineEval
 from models.basicmlp import BasicMLP
 from torch.utils.data import DataLoader
@@ -8,6 +9,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import Callback
 from torch.utils.tensorboard import SummaryWriter
 from callbacks.callbacks import SSLOnlineEval
+from pytorch_lightning.callbacks import ModelCheckpoint
 import torchvision
 # from transforms import img_transforms, spatio_cut, audio_transforms
 
@@ -43,12 +45,13 @@ def train(config):
     # model = BasicMLP(config)
     fine_tuner = SSLOnlineEval(z_dim=1024, num_classes=305)
     fine_tuner.to_device = to_device
+    checkpoint_callback = ModelCheckpoint(monitor="training_loss")
 
-    callbacks = [fine_tuner]
+    callbacks = [fine_tuner, checkpoint_callback]
     # model = BasicMLP(config)
     # dataset = CustomDataset(config)
     # dm = MMXDataModule("data_processing/mmx_tensors_train.pkl","data_processing/mmx_tensors_val.pkl", config)
-    dm = MITDataModule("data_processing/mit_tensors_train_wc.pkl","data_processing/mit_tensors_train_wc.pkl", config)
+    dm = MMXDataModule("data_processing/scene_temporal/mmx_tensors_train.pkl","data_processing/scene_temporal/mmx_tensors_val.pkl", config)
 
 
     # train_dataset = CSV_Dataset(config, test=False)
@@ -62,7 +65,7 @@ def train(config):
 
     # trainer = pl.Trainer(gpus=1, max_epochs=100,callbacks=[LogCallback()])
 
-    trainer = pl.Trainer(gpus=1, max_epochs=10)
+    trainer = pl.Trainer(gpus=1, max_epochs=10, default_root_dir=f"/trained_models/mmx/contrastive/{config.get")
     trainer.fit(model, dm)
     #trainer.test(model, datamodule=dm, ckpt_path="lightning_logs/version_64/checkpoints/test.ckpt")
 
@@ -70,7 +73,6 @@ def test(config):
 
     fine_tuner = SSLOnlineEval(z_dim=1024, num_classes=305)
     fine_tuner.to_device = to_device
-    
     model = SpatioTemporalContrastiveModel(config)
     model = model.load_from_checkpoint(
             config=config,
@@ -86,7 +88,6 @@ def test(config):
     trainer = pl.Trainer(gpus=[1], callbacks=callbacks)
     trainer.test(model, datamodule=dm)
 
-    
 def main():
 
     config = confuse.Configuration("mmodel-moments-in-time")

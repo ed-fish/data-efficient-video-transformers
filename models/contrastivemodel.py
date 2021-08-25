@@ -30,10 +30,10 @@ class OnlineEval(nn.Module):
 class SpatioTemporalContrastiveModel(pl.LightningModule):
     def __init__(self, config):
         super().__init__()
-        self.input_layer_size = config["input_shape"].get()
-        self.hidden_layer_size = config["hidden_layer"].get()
-        self.projection_size = config["projection_size"].get()
-        self.output_layer_size = config["output_shape"].get()
+        self.input_layer_size = 2048
+        self.hidden_layer_size = 1024
+        self.projection_size = 512
+        self.output_layer_size = 128
         self.batch_size = config["batch_size"].get()
         self.config = config
         # self.ee = EmbeddingExtractor(self.config)
@@ -124,7 +124,7 @@ class SpatioTemporalContrastiveModel(pl.LightningModule):
         x_j_out = x_j_out.squeeze()
 
         loss = self.loss(x_i_out, x_j_out)
-        self.log("training loss", loss)
+        self.log("training_loss", loss)
         return loss
 
     def validation_step(self, batch, batch_idx):

@@ -38,7 +38,7 @@ def create_embedding_dict(filepath):
         chunk_dict = dict()
        
         for chunk in chunks:
-            expert_list = []
+            expert_dic = dict()
             for expert_dir in experts:
                 tens_dir = os.path.join(chunk, expert_dir)
                 if len(os.listdir(tens_dir)) > 1:
@@ -52,13 +52,13 @@ def create_embedding_dict(filepath):
                     expert_tensor = glob.glob(tens_dir + "/*.pt") 
                     expert_tensor = torch.load(expert_tensor[0], map_location="cpu")
                     expert_tensor = expert_tensor.cpu().detach().numpy()
-                    expert_list.append(expert_tensor)
+                    expert_dict[expert_dir] = expert_tensor
                 else:
                     print("no audio")
                     # No audio embedding available
                     continue
             chunk_str = chunk.split("/")[-2]
-            chunk_dict[os.path.basename(chunk_str)] = expert_list
+            chunk_dict[os.path.basename(chunk_str)] = expert_dict
 
         scene_str = scene.split("/")[-2]
         scene_dict[os.path.basename(scene_str)] = chunk_dict
@@ -67,7 +67,7 @@ def create_embedding_dict(filepath):
 
 
 def create_scene_dict_train(filepath):
-    experts = ["location-embeddings", "img-embeddings", "video-embeddings"]
+    experts = ["location-embeddings", "img-embeddings", "video-embeddings", "audio-embeddings"]
 
     orig_dir = filepath.replace("/mnt/bigelow/scratch/mmx_aug", "/mnt/fvpbignas/datasets/mmx_raw")
 
@@ -79,7 +79,7 @@ def create_scene_dict_train(filepath):
         label = pickle.load(pickly)
     chunk_dict = dict()
     for chunk in glob.glob(filepath + "/*/"):
-        expert_list = []
+        expert_dict = dict()
         for expert_dir in experts:
             tens_dir = os.path.join(chunk, expert_dir)
             try:
@@ -88,23 +88,23 @@ def create_scene_dict_train(filepath):
                     for tensor in glob.glob(tens_dir + "/*.pt"):
                         # tensor_list.append(torch.load(tensor, map_location="cpu"))
                         tensor_list.append(tensor)
-                    expert_list.append(tensor_list)
+                    expert_dict[expert_dir] = tensor_list
                 elif len(os.listdir(tens_dir)) == 1:
                     expert_tensor = glob.glob(tens_dir + "/*.pt")
                     #expert_tensor = torch.load(expert_tensor[0], map_location="cpu")
-                    expert_list.append(expert_tensor[0])
+                    expert_dict[expert_dir] = expert_tensor[0]
                 else:
                     # No audio embedding available
                     continue
             except:
                 continue
         chunk_str = chunk.split("/")[-2]
-        chunk_dict[os.path.basename(chunk_str)] = expert_list
+        chunk_dict[os.path.basename(chunk_str)] = expert_dict
     scene_dict = {"path":orig_dir, "scene":scene, "label":label, "data":chunk_dict}
     return scene_dict
 
 def create_scene_dict_test(filepath):
-    experts = ["test-location-embeddings", "test-img-embeddings", "test-video-embeddings"]
+    experts = ["test-location-embeddings", "test-img-embeddings", "test-video-embeddings", "audio-embeddings"]
 
     orig_dir = filepath.replace("/mnt/bigelow/scratch/mmx_aug", "/mnt/fvpbignas/datasets/mmx_raw")
 
@@ -116,7 +116,7 @@ def create_scene_dict_test(filepath):
         label = pickle.load(pickly)
     chunk_dict = dict()
     for chunk in glob.glob(filepath + "/*/"):
-        expert_list = []
+        expert_dict = dict()
         for expert_dir in experts:
             tens_dir = os.path.join(chunk, expert_dir)
             try:
@@ -125,18 +125,18 @@ def create_scene_dict_test(filepath):
                     for tensor in glob.glob(tens_dir + "/*.pt"):
                         # tensor_list.append(torch.load(tensor, map_location="cpu"))
                         tensor_list.append(tensor)
-                    expert_list.append(tensor_list)
+                    expert_dict[expert_dir] = tensor_list
                 elif len(os.listdir(tens_dir)) == 1:
                     expert_tensor = glob.glob(tens_dir + "/*.pt")
                     #expert_tensor = torch.load(expert_tensor[0], map_location="cpu")
-                    expert_list.append(expert_tensor[0])
+                    expert_dict[expert_dir] = expert_tensor[0]
                 else:
                     # No audio embedding available
                     continue
             except:
                 continue
         chunk_str = chunk.split("/")[-2]
-        chunk_dict[os.path.basename(chunk_str)] = expert_list
+        chunk_dict[os.path.basename(chunk_str)] = expert_dict
     scene_dict = {"path":orig_dir, "scene":scene, "label":label, "data":chunk_dict}
     return scene_dict
 
@@ -201,5 +201,6 @@ if __name__ == "__main__":
     torch.multiprocessing.set_sharing_strategy('file_system')
     # rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
     # resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
+
+    squish_folders(input_dir)
     mp_handler()
-    # squish_folders(input_dir)
