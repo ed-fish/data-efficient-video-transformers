@@ -22,7 +22,7 @@ class MMXDataModule(pl.LightningDataModule):
         self.train_data = train_data
         self.val_data = val_data
         self.config = config
-        self.bs = self.config["batch_size"].get()
+        self.bs = self.config["batch_size"]
 
     def custom_collater(self, batch):
 
@@ -30,7 +30,6 @@ class MMXDataModule(pl.LightningDataModule):
                 'label':[x['label'] for x in batch],
                 'x_i_experts':[x['x_i_experts'] for x in batch],
                 'x_j_experts':[x['x_j_experts'] for x in batch],
-                'path':[x['path'] for x in batch]
                 }
 
     # def prepare_data(self):
@@ -102,7 +101,7 @@ class MMXDataModule(pl.LightningDataModule):
         data_frame = pd.DataFrame(data)
         print("data loaded")
         print("length", len(data_frame))
-        # data_frame = data_frame.head(10000)
+        data_frame = data_frame.head(10000)
         return data_frame
 
     def setup(self, stage):
@@ -114,13 +113,13 @@ class MMXDataModule(pl.LightningDataModule):
         self.val_data = self.clean_data(self.val_data)
 
     def train_dataloader(self):
-        return DataLoader(MMX_Dataset(self.train_data, self.config, train=True), self.bs, shuffle=True, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
+        return DataLoader(MMX_Dataset(self.train_data, self.config, train=True), self.bs, shuffle=True, collate_fn=self.custom_collater, num_workers=30, drop_last=True)
 
     def val_dataloader(self):
-        return DataLoader(MMX_Dataset(self.val_data, self.config, train=False), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
+        return DataLoader(MMX_Dataset(self.val_data, self.config, train=False), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=30, drop_last=True)
     # For now use validation until proper test split obtained
     def test_dataloader(self):
-        return DataLoader(MMX_Dataset(self.train_data, self.config), 1, shuffle=False, collate_fn=self.custom_collater, num_workers=0)
+        return DataLoader(MMX_Dataset(self.train_data, self.config), 1, shuffle=False, collate_fn=self.custom_collater, num_workers=30)
 
 
 
@@ -130,7 +129,7 @@ class MMX_Dataset(Dataset):
 
         self.config = config
         self.data_frame = data
-        self.aggregation = self.config["aggregation"].get()
+        self.aggregation = self.config["aggregation"]
         self.train = train
 
 
@@ -180,14 +179,14 @@ class MMX_Dataset(Dataset):
         label = self.collect_labels(label[0])
         label = torch.FloatTensor(label)
         data = self.data_frame.at[idx, "data"]
-        path = self.data_frame.at[idx, "path"]
-        path = path.replace("/mnt/fvpbignas/datasets/mmx_raw", "/mnt/bigelow/scratch/mmx_aug")
-        try:
-            path = glob.glob(path + "/*/")[0]
-            path = os.path.join(path, "imgs")
-            path = glob.glob(path + "/*")[1]
-        except:
-            path = "None"
+        # path = self.data_frame.at[idx, "path"]
+        # path = path.replace("/mnt/fvpbignas/datasets/mmx_raw", "/mnt/bigelow/scratch/mmx_aug")
+        # try:
+        #     path = glob.glob(path + "/*/")[0]
+        #     path = os.path.join(path, "imgs")
+        #     path = glob.glob(path + "/*")[1]
+        # except:
+        #     path = "None"
         scene = self.data_frame.at[idx, "scene"]
 
         experts_xi = []
@@ -198,9 +197,9 @@ class MMX_Dataset(Dataset):
         # if there are less than 2 scenes in the sample we need to do something else. 
 
         if self.train:
-            experts = self.config["train_experts"].get()
+            experts = self.config["train_experts"]
         else:
-            experts = self.config["test_experts"].get()
+            experts = self.config["test_experts"]
         if len(data) < 2:
             data = list(data.values())[0] # take the first index as its the only valid one
             #data = list(data.values())
@@ -258,7 +257,7 @@ class MMX_Dataset(Dataset):
             experts_xi = torch.cat(experts_xi, dim=-1)
             experts_xj = torch.cat(experts_xj, dim=-1)
 
-        return {"label":label, "path":path, "scene":scene, "x_i_experts":experts_xi, "x_j_experts":experts_xj}
+        return {"label":label, "scene":scene, "x_i_experts":experts_xi, "x_j_experts":experts_xj}
 
 
 class MIT_RAW_Dataset(Dataset):

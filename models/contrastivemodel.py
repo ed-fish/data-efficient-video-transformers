@@ -34,7 +34,7 @@ class SpatioTemporalContrastiveModel(pl.LightningModule):
         self.hidden_layer_size = 1024
         self.projection_size = 512
         self.output_layer_size = 128
-        self.batch_size = config["batch_size"].get()
+        self.batch_size = config["batch_size"]
         self.config = config
         # self.ee = EmbeddingExtractor(self.config)
 
@@ -69,11 +69,11 @@ class SpatioTemporalContrastiveModel(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(),
-                                     lr=self.config["learning_rate"].get())
+                                     lr=self.config["learning_rate"])
         return optimizer
 
     def expert_aggregation(self, expert_list):
-        agg = self.config["aggregation"].get()
+        agg = self.config["aggregation"]
 
         # in the case that there is just one expert 
         if agg == "none":
