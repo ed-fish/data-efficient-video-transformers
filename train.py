@@ -1,5 +1,4 @@
-import confuse 
-import math
+import confuse import math
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
@@ -189,6 +188,10 @@ class TransformerModel(pl.LightningModule):
             encoded_list.append(e)
         return encoded_list
 
+    def post_concat(self, data):
+
+
+
     def shared_step(self, data, target):
 
         if self.pre_contrastive:
@@ -196,6 +199,9 @@ class TransformerModel(pl.LightningModule):
 
         if self.mixing== "collab" and self.architecture=="pre-trans":
             data = self.collab(data)
+
+        elif self.architecture =="post-concat":
+            expert_slices = self.post_concat(data)
         else:
             data = torch.cat(data, dim=0)
 

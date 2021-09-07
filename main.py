@@ -1,19 +1,23 @@
-import confuse
+import confuse 
 import wandb
 from torchmetrics.functional import f1, auroc
+from pytorch_lightning.plugins import DDPPlugin
 from dataloaders.MIT_dl import MIT_RAW_Dataset, MITDataset, MITDataModule
 from dataloaders.MMX_dl import MMX_Dataset, MMXDataModule
-from models.contrastivemodel import SpatioTemporalContrastiveModel, OnlineEval
+from models.contrastivemodel import SpatioTemporalContrastiveModel
 from pytorch_lightning.loggers import WandbLogger
 from models.basicmlp import BasicMLP
+from torchmetrics.functional import f1, auroc
 from torch.utils.data import DataLoader
 import torch
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import Callback
 from torch.utils.tensorboard import SummaryWriter
 from callbacks.callbacks import SSLOnlineEval
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import LearningRateMonitor
 import torchvision
+from pytorch_lightning.callbacks import ModelCheckpoint
+
 # from transforms import img_transforms, spatio_cut, audio_transforms
 
 class LogCallback(Callback):
@@ -28,7 +32,7 @@ class LogCallback(Callback):
         # print(imgs.shape)
         writer.add_embedding(embeddings, metadata=labels)
         print("added projection")
-        
+
 def to_device(batch, device):
     x_i_experts = batch["x_i_experts"]
     label = batch["label"]
@@ -39,25 +43,25 @@ def to_device(batch, device):
     label = label.to(device)
     return x_i_experts, label
 
+#def test(config):
 
-def test(config):
+#    fine_tuner = SSLOnlineEval(z_dim=128, num_classes=15)
+#    fine_tuner.to_device = to_device
+#    model = SpatioTemporalContrastiveModel(config)
+#    model = model.load_from_checkpoint(
+#            config=config,
+#            checkpoint_path="lightning_logs/version_64/checkpoints/test.ckpt",
+#            hparams_file="lightning_logs/version_64/hparams.yaml",
+#            map_location=None
+#            )
 
-    fine_tuner = SSLOnlineEval(z_dim=1024, num_classes=305)
-    fine_tuner.to_device = to_device
-    model = SpatioTemporalContrastiveModel(config)
-    model = model.load_from_checkpoint(
-            config=config,
-            checkpoint_path="lightning_logs/version_64/checkpoints/test.ckpt",
-            hparams_file="lightning_logs/version_64/hparams.yaml",
-            map_location=None
-            )
+#    log_callback = LogCallback()
+#    lr_monitor = 
+#    callbacks=[fine_tuner, log_callback, ]
 
-    callback = LogCallback()
-    callbacks=[fine_tuner, callback]
-
-    dm = MMXDataModule("data_processing/mmx_tensors_train.pkl","data_processing/mmx_tensors_val.pkl", config)
-    trainer = pl.Trainer(gpus=[0], callbacks=callbacks, logger= wandb_logger)
-    trainer.test(model, datamodule=dm)
+#    dm = MMXDataModule("data_processing/mmx_tensors_train.pkl","data_processing/mmx_tensors_val.pkl", config)
+#    trainer = pl.Trainer(gpus=[1], callbacks=callbacks)
+#    #.test(model, datamodule=dm)
 
 def main():
 
@@ -66,36 +70,46 @@ def main():
 
     wandb_logger = WandbLogger(project="MMX_Scene_Contrastive", log_model='all')
     bs = config["batch_size"].get()
-    gpu = config["device"].get()
     aggregation = config["aggregation"].get()
     
-    device = torch.device(f"cuda:{gpu}")
+    lr_monitor = LearningRateMonitor(logging_interval='epoch')
 
     learning_rate = config["learning_rate"].get()
     train_experts = config["train_experts"].get()
     test_experts = config["test_experts"].get()
+    momentum = config["momentum"].get()
+    weight_decay = config["weight_decay"].get()
+    warm_up = config["warm_up"].get()
+    num_samples = config["num_samples"].get()
+    device = config["device"].get()
+    epochs = config["epochs"].get()
+
 
     params = { "batch_size": bs,
                "train_experts":train_experts,
                "test_experts": test_experts,
                "learning_rate": learning_rate,
-               "aggregation": aggregation}
+               "aggregation": aggregation,
+               "weight_decay": weight_decay,
+               "momentum": momentum,
+               "warm_up": warm_up,
+               "num_samples": num_samples,
+               "device": device,
+               "epochs": epochs}
 
-    wandb.init(config=params)
+    wandb.init(project="contrastive-scene", name="img-ss-small-batch", config=params)
     config = wandb.config
 
     model = SpatioTemporalContrastiveModel(config)
     # model = BasicMLP(config)
-    fine_tuner = SSLOnlineEval(z_dim=1024, num_classes=305)
+    fine_tuner = SSLOnlineEval(z_dim=512, num_classes=15)
     fine_tuner.to_device = to_device
-    checkpoint_callback = ModelCheckpoint(save_last=True)
 
-    callbacks = [fine_tuner, checkpoint_callback]
     # model = BasicMLP(config)
     # dataset = CustomDataset(config)
     # dm = MMXDataModule("data_processing/mmx_tensors_train.pkl","data_processing/mmx_tensors_val.pkl", config)
     dm = MMXDataModule("data_processing/scene_temporal/mmx_tensors_train.pkl","data_processing/scene_temporal/mmx_tensors_val.pkl", config)
-
+   # checkpoint = ModelCheckpoint(monitor="train/contrastive/loss")
 
     # train_dataset = CSV_Dataset(config, test=False)
     # val_dataset = CSV_Dataset(config, test=True)
@@ -108,13 +122,15 @@ def main():
 
     # trainer = pl.Trainer(gpus=1, max_epochs=100,callbacks=[LogCallback()])
 
-    trainer = pl.Trainer(gpus=[2], max_epochs=10, logger=wandb_logger)
-    trainer.fit(model, dm)
+    callbacks = [fine_tuner, lr_monitor]
+    trainer = pl.Trainer(gpus=[config["device"]], max_epochs=config["epochs"], callbacks=callbacks, logger=wandb_logger, accelerator="ddp")
+    trainer.fit(model, datamodule=dm)
     #trainer.test(model, datamodule=dm, ckpt_path="lightning_logs/version_64/checkpoints/test.ckpt")
     # test(config)
 
 if __name__ == "__main__":
     # torch.multiprocessing.set_start_method('spawn', force=True)
-    torch.multiprocessing.set_sharing_strategy('file_system')
+    # torch.multiprocessing.set_sharing_strategy('file_system')
     main()
+
 

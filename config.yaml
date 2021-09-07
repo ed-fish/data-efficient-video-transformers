@@ -1,16 +1,17 @@
----
-
+--- 
 # General params
-batch_size: 600
-learning_rate: 0.01
+batch_size: 1000
+learning_rate: 0.05
 epochs: 300
 seq_len: 144
 
 # Optimisation
 dropout: 0.59
-momentum: 0.05
-weight_decay: 0.005
+momentum: 0.0005
+weight_decay: 0.0001
 scheduling: True
+warm_up: 2
+num_samples: 50000
 
 # Architecure optimisation
 token_embedding: 128
@@ -21,12 +22,12 @@ gpu: 3
 
 # Data input
 # img = 2048, location = 2048, motion = 512, audio = 128
-experts: ["test-img-embeddings"]
+experts: ["test-motion-embeddings"]
 train_experts: ["img-embeddings"]
 test_experts: ["test-img-embeddings"]
 # experts: ["location-embeddings", "img-embeddings", "video-embeddings", "audio-embeddings"]
 n_labels: 15
-input_shape: 1024
+input_shape: 512
 n_heads: 2
 # pool or None
 frame_agg: "none"
@@ -41,7 +42,7 @@ cat_softmax: False
 architecture: "pre-contrast"
 
 # Self supervised options
-device: 0
-# Method for pooling img, depth, and location embeddings. 
+device: 1
+# Method for pooling img, depth, and location embeddings.1
 # avg, max, random (select a random frame each time)
-aggregation: "concat"
+aggregation: "none"

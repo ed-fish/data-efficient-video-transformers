@@ -36,15 +36,27 @@ class MMXDataModule(pl.LightningDataModule):
     #    data = self.load_data(self.pickle_file)
     #    self.data = self.clean_data(data)
 
-    def clean_data(self, data_frame):
+    def clean_data(self, data_frame, train=True):
+        target_names = ['Action'  ,'Adventure'  ,'Comedy'  ,'Crime'  ,'Documentary'  ,'Drama'  ,'Family' , 'Fantasy'  ,'History'  ,'Horror'  ,'Music' , 'Mystery'  ,'Science Fiction' , 'Thriller',  'War']
+
 
         print("cleaning data")
         print(len(data_frame))
-        id_to_drop = []
+
+        longest_seq = 0
         for i in range(len(data_frame)):
-            
+            data = data_frame.at[i, "scene"]
+            label = data_frame.at[i, "label"]
+            n_labels = 0
+            for l in label[0]:
+                if l not in target_names:
+                    n_labels += 1
+            if n_labels == 6:
+                data_frame = data_frame.drop(i)
+                continue
             data = data_frame.at[i, "data"]
             data_chunk = list(data.values())           
+
             if len(data_chunk) == 0:
                 print("dropping index with no data", i, len(data_chunk))
                 data_frame = data_frame.drop(i)
@@ -55,6 +67,17 @@ class MMXDataModule(pl.LightningDataModule):
                 print("dropping index with incomplete data", i, len(data))
                 data_frame = data_frame.drop(i)
                 continue
+
+            if train:
+                experts = self.config["train_experts"]
+            else:
+                experts = self.config["test_experts"]
+            for p in range(len(data_chunk)):
+                for e in experts:
+                    if e not in data_chunk[p].keys():
+                        data_frame = data_frame.drop(i)
+                        continue
+
 
                 # test = []
                 # for f in data[1]: # data1 == img_embeddings, data2 == motion?, data0=location
@@ -101,22 +124,22 @@ class MMXDataModule(pl.LightningDataModule):
         data_frame = pd.DataFrame(data)
         print("data loaded")
         print("length", len(data_frame))
-        data_frame = data_frame.head(10000)
+#        data_frame = data_frame.head(1000)
         return data_frame
 
     def setup(self, stage):
 
         self.train_data = self.load_data(self.train_data)
-        self.train_data = self.clean_data(self.train_data)
+        self.train_data = self.clean_data(self.train_data, train=True)
 
         self.val_data = self.load_data(self.val_data)
-        self.val_data = self.clean_data(self.val_data)
+        self.val_data = self.clean_data(self.val_data, train=False)
 
     def train_dataloader(self):
-        return DataLoader(MMX_Dataset(self.train_data, self.config, train=True), self.bs, shuffle=True, collate_fn=self.custom_collater, num_workers=30, drop_last=True)
+        return DataLoader(MMX_Dataset(self.train_data, self.config, train=True), self.bs, shuffle=True, collate_fn=self.custom_collater, num_workers=35, drop_last=True, pin_memory=True)
 
     def val_dataloader(self):
-        return DataLoader(MMX_Dataset(self.val_data, self.config, train=False), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=30, drop_last=True)
+        return DataLoader(MMX_Dataset(self.val_data, self.config, train=False), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=35, drop_last=True, pin_memory=True)
     # For now use validation until proper test split obtained
     def test_dataloader(self):
         return DataLoader(MMX_Dataset(self.train_data, self.config), 1, shuffle=False, collate_fn=self.custom_collater, num_workers=30)
@@ -137,32 +160,10 @@ class MMX_Dataset(Dataset):
         return len(self.data_frame)
     
     def collect_labels(self, label):
-	
-        target_names = ['Action',
-                        'Adventure',
-                        'Animation',
-                        'Biography',
-                        'Comedy',
-                        'Crime',
-                        'Documentary',
-                        'Drama',
-                        'Family',
-                        'Fantasy',
-                        'History',
-                        'Horror',
-                        'Music',
-                        'Mystery',
-                        'Romance',
-                        'Science Fiction',
-                        'Short',
-                        'Sport',
-                        'Thriller',
-                        'TV Movie',
-                        'War',
-                        'Western',
-                        ]
 
-        label_list = np.zeros(22)
+        target_names = ['Action'  ,'Adventure'  ,'Comedy'  ,'Crime'  ,'Documentary'  ,'Drama'  ,'Family' , 'Fantasy'  ,'History'  ,'Horror'  ,'Music' , 'Mystery'  ,'Science Fiction' , 'Thriller',  'War']
+	
+        label_list = np.zeros(15)
 
         for i, genre in enumerate(target_names):
             if genre == "Sci-Fi" or genre == "ScienceFiction":
@@ -213,7 +214,10 @@ class MMX_Dataset(Dataset):
             # Now we have data = ["000"][experts] and mix_up_data = ["000"][experts]
 
             for expert in experts:
-                expert_vec = data[expert]
+                try:
+                    expert_vec = data[expert]
+                except:
+                    continue
                 if not isinstance(expert_vec, str):
                     expert_vec = random.choice(expert_vec)
                 expert_vec = torch.load(expert_vec)

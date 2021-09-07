@@ -54,8 +54,11 @@ class ContrastiveLoss(nn.Module):
         emb_i and emb_j are batches of embeddings, where corresponding indices are pairs
         z_i, z_j as per SimCLR paper
         """
-        z_i = F.normalize(emb_i, dim=1)
-        z_j = F.normalize(emb_j, dim=1)
+        #z_i = F.normalize(emb_i, dim=1)
+        #z_j = F.normalize(emb_j, dim=1)
+
+        z_i = emb_i
+        z_j = emb_j
 
         representations = torch.cat([z_i, z_j], dim=0)
         similarity_matrix = F.cosine_similarity(representations.unsqueeze(1), representations.unsqueeze(0), dim=2)
