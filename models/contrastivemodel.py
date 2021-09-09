@@ -25,11 +25,11 @@ class SpatioTemporalContrastiveModel(pl.LightningModule):
         # self.ee = EmbeddingExtractor(self.config)
 
         self.encoder_net = nn.Sequential(
-                nn.Dropout(p=0.1),
                 nn.Linear(self.input_layer_size, self.hidden_layer_size, bias=False),
                 nn.ReLU(inplace=True),
                 nn.BatchNorm1d(self.hidden_layer_size),
-                nn.Dropout(p=0.1),
+                nn.Linear(self.hidden_layer_size, self.hidden_layer_size, bias=False),
+                nn.ReLU(inplace=True),
                 nn.Linear(self.hidden_layer_size, self.projection_size),
                 )
 
@@ -49,7 +49,7 @@ class SpatioTemporalContrastiveModel(pl.LightningModule):
     def forward(self, tensor):
        # if self.config["aggregation"].get() == "collab":
        embedding = self.encoder_net(tensor)
-       embedding = F.normalize(embedding)
+       # embedding = F.normalize(embedding)
        output = self.projector_net(embedding)
 
        return embedding, output

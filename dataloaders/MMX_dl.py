@@ -43,6 +43,8 @@ class MMXDataModule(pl.LightningDataModule):
         print("cleaning data")
         print(len(data_frame))
 
+        data_frame = data_frame.reset_index(drop=True)
+
         longest_seq = 0
         for i in range(len(data_frame)):
             data = data_frame.at[i, "scene"]
@@ -75,6 +77,8 @@ class MMXDataModule(pl.LightningDataModule):
             for p in range(len(data_chunk)):
                 for e in experts:
                     if e not in data_chunk[p].keys():
+                        print(data_chunk[p].keys())
+                        print(i)
                         data_frame = data_frame.drop(i)
                         continue
 
@@ -124,7 +128,7 @@ class MMXDataModule(pl.LightningDataModule):
         data_frame = pd.DataFrame(data)
         print("data loaded")
         print("length", len(data_frame))
-#        data_frame = data_frame.head(1000)
+        data_frame = data_frame.head(1000)
         return data_frame
 
     def setup(self, stage):

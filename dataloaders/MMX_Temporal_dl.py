@@ -42,6 +42,7 @@ class MMXDataModule(pl.LightningDataModule):
 
         print("cleaning data")
         print(len(data_frame))
+        print(data_frame.describe())
 
         longest_seq = 0
         for i in range(len(data_frame)):
@@ -55,6 +56,7 @@ class MMXDataModule(pl.LightningDataModule):
                 data_frame = data_frame.drop(i)
                 continue
             data_chunk = list(data.values())
+            print(data)
             if len(data_chunk) > longest_seq:
                 longest_seq = len(data_chunk)
             if len(data_chunk) < 5:
@@ -80,7 +82,7 @@ class MMXDataModule(pl.LightningDataModule):
         data_frame = pd.DataFrame(data)
         print("data loaded")
         print("length", len(data_frame))
-        #data_frame = data_frame.head(64)
+        # data_frame = data_frame.head(1000)
         return data_frame
 
     def setup(self, stage):
@@ -91,14 +93,14 @@ class MMXDataModule(pl.LightningDataModule):
         self.val_data = self.clean_data(self.val_data)
 
     def train_dataloader(self):
-        return DataLoader(MMXDataset(self.train_data, self.config), self.bs, shuffle=True, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
+        return DataLoader(MMXDataset(self.train_data, self.config), self.bs, shuffle=True, collate_fn=self.custom_collater, num_workers=20, drop_last=True)
 
     def val_dataloader(self):
-        return DataLoader(MMXDataset(self.val_data, self.config), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
+        return DataLoader(MMXDataset(self.val_data, self.config), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=20, drop_last=True)
 
 # For now use validation until proper test split obtained
     def test_dataloader(self):
-        return DataLoader(MMXDataset(self.train_data, self.config), 1, shuffle=False, collate_fn=self.custom_collater, num_workers=0)
+        return DataLoader(MMXDataset(self.train_data, self.config), 1, shuffle=False, collate_fn=self.custom_collater, num_workers=20)
 
 
 class MMXDataset(Dataset):

@@ -71,7 +71,7 @@ def main():
     wandb_logger = WandbLogger(project="MMX_Scene_Contrastive", log_model='all')
     bs = config["batch_size"].get()
     aggregation = config["aggregation"].get()
-    
+
     lr_monitor = LearningRateMonitor(logging_interval='epoch')
 
     learning_rate = config["learning_rate"].get()
@@ -97,7 +97,7 @@ def main():
                "device": device,
                "epochs": epochs}
 
-    wandb.init(project="contrastive-scene", name="img-ss-small-batch", config=params)
+    wandb.init(project="contrastive-scene", name="img-full", config=params)
     config = wandb.config
 
     model = SpatioTemporalContrastiveModel(config)
@@ -108,8 +108,8 @@ def main():
     # model = BasicMLP(config)
     # dataset = CustomDataset(config)
     # dm = MMXDataModule("data_processing/mmx_tensors_train.pkl","data_processing/mmx_tensors_val.pkl", config)
-    dm = MMXDataModule("data_processing/scene_temporal/mmx_tensors_train.pkl","data_processing/scene_temporal/mmx_tensors_val.pkl", config)
-   # checkpoint = ModelCheckpoint(monitor="train/contrastive/loss")
+    dm = MMXDataModule("data_processing/scene_temporal/mmx_tensors_train_3.pkl","data_processing/scene_temporal/mmx_tensors_val_3.pkl", config)
+    # checkpoint = ModelCheckpoint(monitor="train/contrastive/loss")
 
     # train_dataset = CSV_Dataset(config, test=False)
     # val_dataset = CSV_Dataset(config, test=True)
@@ -121,8 +121,13 @@ def main():
     # val_loader = DataLoader(val_dataset, bs, shuffle=False, collate_fn=custom_collater, num_workers=0, drop_last=True)
 
     # trainer = pl.Trainer(gpus=1, max_epochs=100,callbacks=[LogCallback()])
+    checkpoints = ModelCheckpoint(monitor="train/contrastive/loss",
+                                  dirpath="weights/contrastive-scene/",
+                                  filename=''.join(config['train_experts']),
+                                  mode="min"
+                                  )
 
-    callbacks = [fine_tuner, lr_monitor]
+    callbacks = [fine_tuner, lr_monitor, checkpoints]
     trainer = pl.Trainer(gpus=[config["device"]], max_epochs=config["epochs"], callbacks=callbacks, logger=wandb_logger, accelerator="ddp")
     trainer.fit(model, datamodule=dm)
     #trainer.test(model, datamodule=dm, ckpt_path="lightning_logs/version_64/checkpoints/test.ckpt")

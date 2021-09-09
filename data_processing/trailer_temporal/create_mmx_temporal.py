@@ -56,6 +56,7 @@ def create_embedding_dict(filepath):
                         expert_dict[expert_dir] = tensor_list
                         # expert_list.append(tensor_list)
                     elif len(os.listdir(tens_dir)) == 1:
+                        print("expert", expert_dir)
                         expert_tensor = glob.glob(tens_dir + "/*.pt") 
                         #expert_tensor = torch.load(expert_tensor[0], map_location="cpu")
                         #expert_tensor = expert_tensor.cpu().detach().numpy()

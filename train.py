@@ -1,4 +1,5 @@
-import confuse import math
+import confuse 
+import math
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
@@ -12,8 +13,10 @@ from models.contrastivemodel import SpatioTemporalContrastiveModel
 from dataloaders.MMX_Temporal_dl import MMXDataset, MMXDataModule
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pl_bolts.optimizers.lr_scheduler import LinearWarmupCosineAnnealingLR
+from callbacks.callbacks import TransformerEval
 from torch.nn import Transformer
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
+from pytorch_lightning.callbacks import ModelCheckpoint
 
 class PositionalEncoding(pl.LightningModule):
     def __init__(self, d_model, dropout=0.1, max_len=5):
@@ -148,7 +151,7 @@ class TransformerModel(pl.LightningModule):
         encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout)
         self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
         self.encoder = nn.Embedding(ntoken, ninp).to(self.device)
-        self.self_sup_encoder = SpatioTemporalContrastiveModel()
+        # self.self_sup_encoder = SpatioTemporalContrastiveModel()
         #self.accuracy = torchmetrics.F1(num_classes=15, threshold=0.1, top_k=3) # f1 weighted for mmx
         #self.accuracy = torchmetrics.Accuracy()
         self.decoder = nn.Linear(ninp, token_embedding)
@@ -158,6 +161,8 @@ class TransformerModel(pl.LightningModule):
         self.collab = CollaborativeGating()
         self.bs = batch_size
         self.init_weights()
+        self.running_labels = []
+        self.running_logits = []
 
     def configure_optimizers(self):
         optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.learning_rate, momentum=self.hparams.momentum, weight_decay=self.hparams.weight_decay)
@@ -188,14 +193,7 @@ class TransformerModel(pl.LightningModule):
             encoded_list.append(e)
         return encoded_list
 
-    def post_concat(self, data):
-
-
-
     def shared_step(self, data, target):
-
-        if self.pre_contrastive:
-            data = self.contrastive_forward(data)
 
         if self.mixing== "collab" and self.architecture=="pre-trans":
             data = self.collab(data)
@@ -267,6 +265,7 @@ class TransformerModel(pl.LightningModule):
         outputs[outputs >= 0.5] = 1
         return outputs
 
+
     def validation_step(self, batch, batch_idx):
 
         data = batch["experts"]
@@ -274,19 +273,10 @@ class TransformerModel(pl.LightningModule):
 
         data, target = self.shared_step(data, target)
         target = target.float()
+        self.running_labels.append(target)
+        self.running_logits.append(data)
 
-        #target = torch.argmax(target, dim=-1)
         loss = self.criterion(data, target)
-
-        # acc_preds = self.preds_acc(data)
-        self.log('val/f1@t1', f1(data, target.to(int), num_classes=15, average="weighted",threshold=-1.0), on_step=False, on_epoch=True)
-        self.log('val/f1@t-1.5', f1(data, target.to(int), num_classes=15,average="weighted", threshold=-1.5), on_step=False, on_epoch=True)
-        self.log('val/f1@t-2.0', f1(data, target.to(int), num_classes=15,average="weighted", threshold=-2.0),on_step=False, on_epoch=True)
-        self.log('val/f1@t0', f1(data, target.to(int), num_classes=15,average="weighted", threshold=0),on_step=False, on_epoch=True)
-        #print(target.shape)
-        #print(target.to(int))
-        # area_under_curve = auroc(F.softmax(data), target.to(int),num_classes=15, average="weighted")
-        # self.log('val/auprc', area_under_curve,on_step=False, on_epoch=True)
         self.log("val/loss", loss, on_step=False, on_epoch=True)
         return loss
 
@@ -328,7 +318,8 @@ def train():
     config = confuse.Configuration("mmodel-moments-in-time")
     config.set_file("config.yaml")
     lr_monitor = LearningRateMonitor(logging_interval='epoch')
-    wandb_logger = WandbLogger(project="MMX_Temporal", log_model='all')
+    wandb_logger = WandbLogger(project="self-supervised-video", log_model='all')
+    trans_eval = TransformerEval()
 
     # dm = MITDataModule("data/mit/mit_tensors_train_wc.pkl","data/mit/mit_tensors_train_wc.pkl", config)
     # dm = MMXDataModule("data/mmx/mmx_tensors_val.pkl","data/mmx/mmx_tensors_val.pkl", config)
@@ -355,6 +346,7 @@ def train():
     cat_norm = config["cat_norm"].get()
     cat_softmax = config["cat_softmax"].get()
     architecture = config["architecture"].get()
+    device = config["device"].get()
 
     params = { "experts":experts,
                "input_shape": config["input_shape"].get(),
@@ -380,12 +372,18 @@ def train():
 
     wandb.init(config=params)
     config = wandb.config
+
+    checkpoints = ModelCheckpoint(monitor="val/loss",
+                                  dirpath="weights/temporal/",
+                                  filename=''.join(config['experts']),
+                                  mode="min"
+                                  )
     # dm = MMXDataModule("data_processing/trailer_temporal/mmx_tensors_train.pkl", "data_processing/trailer_temporal/mmx_tensors_val.pkl", config)
-    dm = MMXDataModule("data_processing/trailer_temporal/train_tst.pkl", "data_processing/trailer_temporal/val_tst.pkl", config)
+    dm = MMXDataModule("data_processing/trailer_temporal/mmx_tensors_train_3.pkl", "data_processing/trailer_temporal/mmx_tensors_val_3.pkl", config)
 
     model = TransformerModel(ntokens, emsize, config["nhead"], nhid=config["nhid"],batch_size=config["batch_size"], nlayers=config["nlayers"], learning_rate=config["learning_rate"], 
                              dropout=config["dropout"], warmup_epochs=config["n_warm_up"], max_epochs=config["epochs"], seq_len=config["seq_len"], token_embedding=config["token_embedding"], architecture=config["architecture"],mixing = config["mixing_method"])
-    trainer = pl.Trainer(gpus=[3], callbacks=[lr_monitor], max_epochs=epochs, logger=wandb_logger)
+    trainer = pl.Trainer(gpus=[device], callbacks=[lr_monitor,trans_eval, checkpoints], max_epochs=epochs, logger=wandb_logger, accelerator="ddp")
     trainer.fit(model, datamodule=dm)
 
 train()

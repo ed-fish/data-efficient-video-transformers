@@ -15,9 +15,71 @@ import wandb
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+from sklearn.metrics import f1_score, recall_score, average_precision_score, precision_score
 from torchmetrics.functional import f1, auroc
 #from torchmetrics.functional import accuracy
 from pytorch_lightning.metrics.functional import accuracy
+
+class TransformerEval(Callback):
+
+    def on_validation_epoch_end(self, trainer, pl_module):
+        self.on_shared_end(pl_module, "val")
+
+    # def on_train_epoch_end(self, trainer, pl_module):
+    #     self.on_shared_end(pl_module, "train")
+
+
+    def on_shared_end(self, pl_module, state):
+
+        target_names = ['Action'  ,'Adventure'  ,'Comedy'  ,'Crime'  ,'Documentary'  ,'Drama'  ,'Family' , 'Fantasy'  ,'History'  ,'Horror'  ,'Music' , 'Mystery'  ,'Science Fiction' , 'Thriller',  'War']
+
+        running_labels = torch.cat(pl_module.running_labels)
+        running_logits = torch.cat(pl_module.running_logits)
+        running_logits = F.sigmoid(running_logits)
+        print("run", running_logits[:5])
+        print("lab", running_labels[:5])
+        t = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
+        running_logits = running_logits.cpu()
+        running_labels = running_labels.cpu()
+        for threshold in t:
+            accuracy = f1_score(running_labels.to(int), (running_logits > threshold).to(int), average="weighted", zero_division=1)
+            recall = recall_score(running_labels.to(int), (running_logits > threshold).to(int), average="weighted", zero_division=1)
+            precision = precision_score(running_labels.to(int), (running_logits > threshold).to(int), average="weighted", zero_division=1)
+            avg_precision = average_precision_score(running_labels.to(int), (running_logits > threshold).to(int), average="weighted")
+
+            pl_module.log(f"{state}/online/f1@{str(threshold)}", accuracy, on_epoch=True)
+            pl_module.log(f"{state}/online/recall@{str(threshold)}", recall, on_epoch=True)
+            pl_module.log(f"{state}/online/precision@{str(threshold)}", precision, on_epoch=True)
+            pl_module.log(f"{state}/online/avg_precision@{str(threshold)}", avg_precision, on_epoch=True)
+            pl_module.log(f"{state}/online/f1@{str(threshold)}", accuracy, on_epoch=True)
+
+        running_labels = running_labels.to(int).cpu().numpy()
+        running_logits = (running_logits > 0.1).to(int).cpu().numpy()
+        print(running_labels)
+        print(running_logits)
+
+        pl_module.running_labels = []
+        pl_module.running_logits = []
+
+        label_str = []
+        target_str = []
+
+        test_table = wandb.Table(columns=["truth", "guess"])
+
+        for i in range(0, 20):
+            test_table.add_data(self.translate_labels(running_labels[i]), self.translate_labels(running_logits[i]))
+
+        pl_module.logger.experiment.log({"table":test_table})
+
+
+    def translate_labels(self, label_vec):
+        target_names = ['Action'  ,'Adventure'  ,'Comedy'  ,'Crime'  ,'Documentary'  ,'Drama'  ,'Family' , 'Fantasy'  ,'History'  ,'Horror'  ,'Music' , 'Mystery'  ,'Science Fiction' , 'Thriller',  'War']
+        labels = []
+        for i, l in enumerate(label_vec):
+            if l:
+                labels.append(target_names[i])
+        return labels
+
 
 class SSLOnlineEval(Callback):
     """
@@ -123,20 +185,25 @@ class SSLOnlineEval(Callback):
  
     def on_shared_end(self, pl_module, state):
 
-
         target_names = ['Action'  ,'Adventure'  ,'Comedy'  ,'Crime'  ,'Documentary'  ,'Drama'  ,'Family' , 'Fantasy'  ,'History'  ,'Horror'  ,'Music' , 'Mystery'  ,'Science Fiction' , 'Thriller',  'War']
 
         running_labels = torch.cat(pl_module.running_labels)
         running_logits = torch.cat(pl_module.running_logits)
+        running_logits = F.sigmoid(running_logits)
         thresholds = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
         for t in thresholds:
-            accuracy = f1(running_logits, running_labels.to(int), num_classes=15, threshold=t, average="weighted")
+            accuracy = f1_score(running_labels.to(int), (running_logits > t).to(int), average="weighted", zero_division=1)
+            recall = recall_score(running_labels.to(int), (running_logits > t).to(int), average="weighted", zero_division=1)
+            precision = precision_score(running_labels.to(int), (running_logits > t).to(int), average="weighted", zero_division=1)
+            avg_precision = average_precision_score(running_labels.to(int), (running_logits > t).to(int), average="weighted")
+
             pl_module.log(f"{state}/online/f1@{str(t)}", accuracy, on_epoch=True)
+            pl_module.log(f"{state}/online/recall@{str(t)}", recall, on_epoch=True)
+            pl_module.log(f"{state}/online/precision@{str(t)}", precision, on_epoch=True)
+            pl_module.log(f"{state}/online/avg_precision@{str(t)}", avg_precision, on_epoch=True)
 
         running_labels = running_labels.to(int).numpy()
-        running_logits = (running_logits > 0.5).to(int).numpy()
-        print(running_labels)
-        print(running_logits)
+        running_logits = (running_logits > 0.1).to(int).numpy()
 
         pl_module.running_labels = []
         pl_module.running_logits = []
