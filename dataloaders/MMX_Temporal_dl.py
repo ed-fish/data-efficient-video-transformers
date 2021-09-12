@@ -41,7 +41,6 @@ class MMXDataModule(pl.LightningDataModule):
 
 
         print("cleaning data")
-        print(len(data_frame))
         print(data_frame.describe())
 
         longest_seq = 0
@@ -63,7 +62,6 @@ class MMXDataModule(pl.LightningDataModule):
                 continue
 
         data_frame = data_frame.reset_index(drop=True)
-        print(len(data_frame))
         return data_frame
 
     def load_data(self, db):
@@ -178,7 +176,7 @@ class MMXDataset(Dataset):
                         if self.config["mixing_method"] == "none":
                             assert False, "Mixing method must be defined for multi modal experts"
                         for expert in self.config["experts"]:
-                            expert_tensor_list.append(F.normalize(self.retrieve_tensors(d, expert), p=2)) # Retrieve the tensors for each expert. 
+                            expert_tensor_list.append(self.retrieve_tensors(d, expert)) # Retrieve the tensors for each expert.
                         if self.config["mixing_method"] == "concat":
                             cat_experts = torch.cat(expert_tensor_list, dim =-1) # concat experts for pre model
                             #expert_list.append(cat_experts)

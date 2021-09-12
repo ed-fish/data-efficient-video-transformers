@@ -198,6 +198,8 @@ class SpatioTemporalContrastiveModel(pl.LightningModule):
         self.log("val/contrastive/loss", loss)
         return {"loss":loss, "val_outputs":x_i_embedding}
 
+
+
     def test_step(self, batch, batch_idx):
         x_i_experts = batch["x_i_experts"]
         x_i_experts = [self.expert_aggregation(x) for x in x_i_experts]

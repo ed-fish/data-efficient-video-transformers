@@ -25,19 +25,12 @@ class TransformerEval(Callback):
     def on_validation_epoch_end(self, trainer, pl_module):
         self.on_shared_end(pl_module, "val")
 
-    # def on_train_epoch_end(self, trainer, pl_module):
-    #     self.on_shared_end(pl_module, "train")
-
-
     def on_shared_end(self, pl_module, state):
 
         target_names = ['Action'  ,'Adventure'  ,'Comedy'  ,'Crime'  ,'Documentary'  ,'Drama'  ,'Family' , 'Fantasy'  ,'History'  ,'Horror'  ,'Music' , 'Mystery'  ,'Science Fiction' , 'Thriller',  'War']
 
         running_labels = torch.cat(pl_module.running_labels)
         running_logits = torch.cat(pl_module.running_logits)
-        print("logits", running_logits.shape)
-        print(running_logits[29])
-        print(running_labels.shape)
         running_logits = F.sigmoid(running_logits)
         t = [-1.0, -0.5, 0.0,0.5,  0.1, 0.2, 0.3, 0.4, 0.5]
         running_logits = running_logits.cpu()
@@ -56,8 +49,6 @@ class TransformerEval(Callback):
 
         running_labels = running_labels.to(int).cpu().numpy()
         running_logits = (running_logits > 0.3).to(int).cpu().numpy()
-        print(running_labels)
-        print(running_logits)
 
         pl_module.running_labels = []
         pl_module.running_logits = []
@@ -180,10 +171,9 @@ class SSLOnlineEval(Callback):
     def on_shared_end(self, pl_module, state):
 
         target_names = ['Action'  ,'Adventure'  ,'Comedy'  ,'Crime'  ,'Documentary'  ,'Drama'  ,'Family' , 'Fantasy'  ,'History'  ,'Horror'  ,'Music' , 'Mystery'  ,'Science Fiction' , 'Thriller',  'War']
-
         running_labels = torch.cat(pl_module.running_labels)
         running_logits = torch.cat(pl_module.running_logits)
-        running_logits = F.sigmoid(running_logits)
+        # running_logits = F.sigmoid(running_logits)
         thresholds = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
         for t in thresholds:
             accuracy = f1_score(running_labels.to(int), (running_logits > t).to(int), average="weighted", zero_division=1)
