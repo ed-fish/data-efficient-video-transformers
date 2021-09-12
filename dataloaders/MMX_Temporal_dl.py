@@ -56,7 +56,6 @@ class MMXDataModule(pl.LightningDataModule):
                 data_frame = data_frame.drop(i)
                 continue
             data_chunk = list(data.values())
-            print(data)
             if len(data_chunk) > longest_seq:
                 longest_seq = len(data_chunk)
             if len(data_chunk) < 5:
@@ -179,7 +178,7 @@ class MMXDataset(Dataset):
                         if self.config["mixing_method"] == "none":
                             assert False, "Mixing method must be defined for multi modal experts"
                         for expert in self.config["experts"]:
-                            expert_tensor_list.append(self.retrieve_tensors(d, expert)) # Retrieve the tensors for each expert. 
+                            expert_tensor_list.append(F.normalize(self.retrieve_tensors(d, expert), p=2)) # Retrieve the tensors for each expert. 
                         if self.config["mixing_method"] == "concat":
                             cat_experts = torch.cat(expert_tensor_list, dim =-1) # concat experts for pre model
                             #expert_list.append(cat_experts)

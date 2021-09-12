@@ -35,10 +35,11 @@ class TransformerEval(Callback):
 
         running_labels = torch.cat(pl_module.running_labels)
         running_logits = torch.cat(pl_module.running_logits)
+        print("logits", running_logits.shape)
+        print(running_logits[29])
+        print(running_labels.shape)
         running_logits = F.sigmoid(running_logits)
-        print("run", running_logits[:5])
-        print("lab", running_labels[:5])
-        t = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
+        t = [-1.0, -0.5, 0.0,0.5,  0.1, 0.2, 0.3, 0.4, 0.5]
         running_logits = running_logits.cpu()
         running_labels = running_labels.cpu()
         for threshold in t:
@@ -54,7 +55,7 @@ class TransformerEval(Callback):
             pl_module.log(f"{state}/online/f1@{str(threshold)}", accuracy, on_epoch=True)
 
         running_labels = running_labels.to(int).cpu().numpy()
-        running_logits = (running_logits > 0.1).to(int).cpu().numpy()
+        running_logits = (running_logits > 0.3).to(int).cpu().numpy()
         print(running_labels)
         print(running_logits)
 
@@ -63,13 +64,6 @@ class TransformerEval(Callback):
 
         label_str = []
         target_str = []
-
-        test_table = wandb.Table(columns=["truth", "guess"])
-
-        for i in range(0, 20):
-            test_table.add_data(self.translate_labels(running_labels[i]), self.translate_labels(running_logits[i]))
-
-        pl_module.logger.experiment.log({"table":test_table})
 
 
     def translate_labels(self, label_vec):

@@ -13,10 +13,9 @@ from models.contrastivemodel import SpatioTemporalContrastiveModel
 from dataloaders.MMX_Temporal_dl import MMXDataset, MMXDataModule
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pl_bolts.optimizers.lr_scheduler import LinearWarmupCosineAnnealingLR
-from callbacks.callbacks import TransformerEval
 from torch.nn import Transformer
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
-from pytorch_lightning.callbacks import ModelCheckpoint
+from callbacks.callbacks import TransformerEval
 
 class PositionalEncoding(pl.LightningModule):
     def __init__(self, d_model, dropout=0.1, max_len=5):
@@ -81,6 +80,8 @@ class CollaborativeGating(pl.LightningModule):
                     expert_attention_vec.append(expert_attention_comp)
                     experts.append(curr_expert)
                 expert_attention_vec = torch.stack(expert_attention_vec, dim=0).sum(dim=0) # concat all attention vectors
+                expert_vector = self.geu(expert_attention_vec) # apply gated embedding
+                scene_list.append(expert_vector)
                 expert_vector = self.geu(expert_attention_vec) # apply gated embedding
                 scene_list.append(expert_vector)
             scene_stack = torch.stack(scene_list)
@@ -155,7 +156,17 @@ class TransformerModel(pl.LightningModule):
         #self.accuracy = torchmetrics.F1(num_classes=15, threshold=0.1, top_k=3) # f1 weighted for mmx
         #self.accuracy = torchmetrics.Accuracy()
         self.decoder = nn.Linear(ninp, token_embedding)
-        self.classifier = nn.Linear(token_embedding * seq_len, ntoken)
+        self.classifier = nn.Sequential(
+                nn.Linear(2048, token_embedding, bias=False),
+                nn.ReLU(),
+                nn.BatchNorm1d(token_embedding),
+                nn.Linear(token_embedding, token_embedding),
+                nn.ReLU(),
+                nn.Dropout(p=dropout),
+                nn.Linear(token_embedding, 128),
+                nn.ReLU(),
+                nn.Dropout(p=dropout),
+                nn.Linear(128, ntoken))
         self.mixing = mixing
         self.architecture = architecture
         self.collab = CollaborativeGating()
@@ -164,27 +175,25 @@ class TransformerModel(pl.LightningModule):
         self.running_labels = []
         self.running_logits = []
 
+
     def configure_optimizers(self):
-        optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.learning_rate, momentum=self.hparams.momentum, weight_decay=self.hparams.weight_decay)
-        if self.hparams.scheduling == True:
-            linear_warmup_cosine_decay = LinearWarmupCosineAnnealingLR(
-                optimizer,
-                warmup_epochs=self.hparams.warmup_epochs,
-                max_epochs=self.hparams.max_epochs,
-                warmup_start_lr=0,
-                eta_min=0
-                )
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
 
-            scheduler = {
-                'name': "warmup cosine decay",
-                'scheduler': linear_warmup_cosine_decay,
-                'interval': 'epoch',
-                'frequency': 1
-            }
-
-            return [optimizer], [scheduler]
-        else:
-            return optimizer
+        # scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=2, max_epochs=10)
+        # if self.hparams.scheduling == True:
+        #     linear_warmup_cosine_decay = LinearWarmupCosineAnnealingLR(
+        #         optimizer,
+        #         warmup_epochs=self.hparams.warmup_epochs,
+        #         max_epochs=self.hparams.max_epochs,
+        #     scheduler = {
+        #         'name': "warmup cosine decay",
+        #         'scheduler': linear_warmup_cosine_decay,
+        #         'interval': 'epoch',
+        #         'frequency': 1
+        #     }
+        #     return [optimizer],[scheduler]
+        # else:
+        return optimizer
 
     def contrastive_forward(self, data):
         encoded_list = []
@@ -195,11 +204,11 @@ class TransformerModel(pl.LightningModule):
 
     def shared_step(self, data, target):
 
+        if self.architecture=="pre-contrastive":
+            data = self.contrastive_forward(data)
+
         if self.mixing== "collab" and self.architecture=="pre-trans":
             data = self.collab(data)
-
-        elif self.architecture =="post-concat":
-            expert_slices = self.post_concat(data)
         else:
             data = torch.cat(data, dim=0)
 
@@ -227,13 +236,18 @@ class TransformerModel(pl.LightningModule):
         # average pooling + softmax
 
         transform_t = transform_t.reshape(self.bs, -1)
+        # if pool:w
+        transform_t = transform_t.unsqueeze(0)
+
+        transform_t = F.adaptive_max_pool1d(transform_t, 2048)
+        transform_t = transform_t.squeeze(0)
         pooled_result = self.classifier(transform_t)
 
         # pooled_result = F.adaptive_avg_pool3d(transform_t, (32, 1, 15))
         # pooled_result = pooled_result.squeeze().squeeze()
 
         # Cross Entropy includes softmax https://bit.ly/3f73RJ7
-        # pooled_result = F.log_softmax(pooled_result, dim=-1)
+        pooled_result = F.relu(pooled_result, dim=-1)
 
         target = target.squeeze()
 
@@ -253,9 +267,8 @@ class TransformerModel(pl.LightningModule):
         target = target.float()
 
         loss = self.criterion(data, target)
-        self.log("train/loss", loss, on_step=False, on_epoch=True)
+        self.log("train/loss", loss, on_step=True, on_epoch=True)
         #acc_preds = self.preds_acc(data)
-        self.log('train/f1@t1', f1(data, target.to(int), num_classes=15, threshold=-1.0), on_step=False, on_epoch=True)
         # torch.nn.utils.clip_grad_norm(self.parameters(), 0.5)
 
         return loss
@@ -265,7 +278,6 @@ class TransformerModel(pl.LightningModule):
         outputs[outputs >= 0.5] = 1
         return outputs
 
-
     def validation_step(self, batch, batch_idx):
 
         data = batch["experts"]
@@ -273,6 +285,13 @@ class TransformerModel(pl.LightningModule):
 
         data, target = self.shared_step(data, target)
         target = target.float()
+
+        #target = torch.argmax(target, dim=-1)
+        loss = self.criterion(data, target)
+
+        # acc_preds = self.preds_acc(data)
+        self.log('val/f1@t1', f1(data, target.to(int), num_classes=15, average="weighted",threshold=-1.0), on_step=False, on_epoch=True)
+        self.log('val/f1@t-1.5', f1(data, target.to(int), num_classes=15,average="weighted", threshold=-1.5), on_step=False, on_epoch=True)
         self.running_labels.append(target)
         self.running_logits.append(data)
 
@@ -319,7 +338,7 @@ def train():
     config.set_file("config.yaml")
     lr_monitor = LearningRateMonitor(logging_interval='epoch')
     wandb_logger = WandbLogger(project="self-supervised-video", log_model='all')
-    trans_eval = TransformerEval()
+    transformer_callback = TransformerEval()
 
     # dm = MITDataModule("data/mit/mit_tensors_train_wc.pkl","data/mit/mit_tensors_train_wc.pkl", config)
     # dm = MMXDataModule("data/mmx/mmx_tensors_val.pkl","data/mmx/mmx_tensors_val.pkl", config)
@@ -347,8 +366,12 @@ def train():
     cat_softmax = config["cat_softmax"].get()
     architecture = config["architecture"].get()
     device = config["device"].get()
+    aggregation=config["aggregation"].get()
+    cat_norm = config["cat_norm"].get()
 
     params = { "experts":experts,
+               "cat_norm":cat_norm,
+               "aggregation":aggregation,
                "input_shape": config["input_shape"].get(),
                "mixing_method":mixing_method,
                "epochs": epochs,
@@ -372,18 +395,13 @@ def train():
 
     wandb.init(config=params)
     config = wandb.config
-
-    checkpoints = ModelCheckpoint(monitor="val/loss",
-                                  dirpath="weights/temporal/",
-                                  filename=''.join(config['experts']),
-                                  mode="min"
-                                  )
-    # dm = MMXDataModule("data_processing/trailer_temporal/mmx_tensors_train.pkl", "data_processing/trailer_temporal/mmx_tensors_val.pkl", config)
     dm = MMXDataModule("data_processing/trailer_temporal/mmx_tensors_train_3.pkl", "data_processing/trailer_temporal/mmx_tensors_val_3.pkl", config)
+    # dm = MMXDataModule("data_processing/trailer_temporal/train_tst.pkl", "data_processing/trailer_temporal/val_tst.pkl", config) 
 
-    model = TransformerModel(ntokens, emsize, config["nhead"], nhid=config["nhid"],batch_size=config["batch_size"], nlayers=config["nlayers"], learning_rate=config["learning_rate"], 
-                             dropout=config["dropout"], warmup_epochs=config["n_warm_up"], max_epochs=config["epochs"], seq_len=config["seq_len"], token_embedding=config["token_embedding"], architecture=config["architecture"],mixing = config["mixing_method"])
-    trainer = pl.Trainer(gpus=[device], callbacks=[lr_monitor,trans_eval, checkpoints], max_epochs=epochs, logger=wandb_logger, accelerator="ddp")
+    # dm = MITDataModule("data/mit/mit_tensors_train.pkl", "data/mit/mit_tensors_train.pkl", config)
+    
+    model = TransformerModel(ntokens, emsize, config["nhead"], nhid=config["nhid"],batch_size=config["batch_size"], nlayers=config["nlayers"], learning_rate=config["learning_rate"],dropout=config["dropout"], warmup_epochs=config["n_warm_up"], max_epochs=config["epochs"], seq_len=config["seq_len"], token_embedding=config["token_embedding"], architecture=config["architecture"],mixing = config["mixing_method"])
+    trainer = pl.Trainer(gpus=[3], callbacks=[lr_monitor, transformer_callback], max_epochs=epochs, logger=wandb_logger)
     trainer.fit(model, datamodule=dm)
 
 train()
