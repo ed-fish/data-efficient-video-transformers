@@ -86,13 +86,15 @@ def train():
     wandb_logger = WandbLogger(project="self-supervised-video", log_model='all')
     transformer_callback = TransformerEval()
 
-    # dm = MITDataModule("data/mit/mit_tensors_train_wc.pkl","data/mit/mit_tensors_train_wc.pkl", config)
+    dm = MITDataModule("data/mit/mit_tensors_train_wc.pkl","data/mit/mit_tensors_train_wc.pkl", config)
     # dm = MMXDataModule("data/mmx/mmx_tensors_val.pkl","data/mmx/mmx_tensors_val.pkl", config)
     # configuration
     params = get_params()
     wandb.init(project="transformer-video", name="img", config=params)
     config = wandb.config
-    dm = MMXDataModule("data_processing/trailer_temporal/mmx_tensors_train_3.pkl", "data_processing/trailer_temporal/mmx_tensors_val_3.pkl", config)
+    #dm = MMXDataModule("data_processing/trailer_temporal/mmx_tensors_train_3.pkl", "data_processing/trailer_temporal/mmx_tensors_val_3.pkl", config)
+    #dm = MMXDataModule("data_processing/trailer_temporal/mmx_tensors_train_3.pkl", "data_processing/trailer_temporal/mmx_tens0ors_val_3.pkl", config)
+
     
     model = TransformerModel(config["ntokens"], config["emsize"], config["nhead"],
                              nhid = config["nhid"],

@@ -142,8 +142,8 @@ class TransformerModel(pl.LightningModule):
                  mixing=None):
         super(TransformerModel, self).__init__()
 
-        # self.criterion = nn.CrossEntropyLoss()
-        self.criterion = nn.BCEWithLogitsLoss()
+        self.criterion = nn.CrossEntropyLoss()
+        # self.criterion = nn.BCEWithLogitsLoss()
         self.seq_len = seq_len
         self.learning_rate = learning_rate
         self.pos_encoder = PositionalEncoding(ninp, dropout, max_len=seq_len) # shared dropout value for pe and tm(el)
@@ -250,6 +250,7 @@ class TransformerModel(pl.LightningModule):
 
         #target = torch.argmax(target, dim=-1)
         loss = self.criterion(data, target)
+        target = F.softmax(target)
         
         # acc_preds = self.preds_acc(data)
         self.running_labels.append(target)

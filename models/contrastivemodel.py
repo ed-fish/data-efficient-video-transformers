@@ -81,15 +81,13 @@ class SpatioTemporalContrastiveModel(pl.LightningModule):
         #     eta_min=0
         # )
 
-        scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=self.config["epochs"] // 10, max_epochs=self.config["epochs"])
-
         # scheduler = {
         #     'scheduler': linear_warmup_cosine_decay,
         #     'interval': 'step',
         #     'frequency': 1
         # }
 
-        return [optimizer], [scheduler]
+        return optimizer
         # optimizer = torch.optim.Adam(self.parameters(),
         #                              lr=self.config["learning_rate"])
 	
@@ -160,6 +158,8 @@ class SpatioTemporalContrastiveModel(pl.LightningModule):
         x_i_embedding, x_i_out = self(x_i_experts)
         x_j_embedding, x_j_out = self(x_j_experts)
 
+        print("embedding", x_i_embedding.shape)
+
         x_i_out = F.normalize(x_i_out.squeeze())
         x_j_out = F.normalize(x_j_out.squeeze())
 
@@ -189,6 +189,9 @@ class SpatioTemporalContrastiveModel(pl.LightningModule):
 
         x_i_embedding, x_i_out = self(x_i_experts)
         x_j_embedding, x_j_out = self(x_j_experts)
+
+
+        print("embedding", x_i_embedding.shape)
 
         x_i_out = x_i_out.squeeze()
         x_j_out = x_j_out.squeeze()
