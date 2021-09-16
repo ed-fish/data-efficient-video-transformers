@@ -86,6 +86,10 @@ def main():
 
 
     params = { "batch_size": bs,
+               "input_shape":config["input_shape"].get(),
+               "hidden_layer":config["hidden_layer"].get(),
+               "projection_size":config["projection_size"].get(),
+               "output_shape": config["output_shape"].get(),
                "train_experts":train_experts,
                "test_experts": test_experts,
                "learning_rate": learning_rate,
@@ -97,12 +101,12 @@ def main():
                "device": device,
                "epochs": epochs}
 
-    wandb.init(project="contrastive-scene", name="img-full", config=params)
+    wandb.init(project="contrastive-scene", name="mmx-video-full", config=params)
     config = wandb.config
 
     model = SpatioTemporalContrastiveModel(config)
     # model = BasicMLP(config)
-    fine_tuner = SSLOnlineEval(z_dim=512, num_classes=15)
+    fine_tuner = SSLOnlineEval(z_dim=128, num_classes=15)
     fine_tuner.to_device = to_device
 
     # model = BasicMLP(config)

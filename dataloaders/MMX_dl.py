@@ -128,7 +128,7 @@ class MMXDataModule(pl.LightningDataModule):
         data_frame = pd.DataFrame(data)
         print("data loaded")
         print("length", len(data_frame))
-        data_frame = data_frame.head(1000)
+        # data_frame = data_frame.head(1000)
         return data_frame
 
     def setup(self, stage):
@@ -140,10 +140,10 @@ class MMXDataModule(pl.LightningDataModule):
         self.val_data = self.clean_data(self.val_data, train=False)
 
     def train_dataloader(self):
-        return DataLoader(MMX_Dataset(self.train_data, self.config, train=True), self.bs, shuffle=True, collate_fn=self.custom_collater, num_workers=35, drop_last=True, pin_memory=True)
+        return DataLoader(MMX_Dataset(self.train_data, self.config, train=True), self.bs, shuffle=True, collate_fn=self.custom_collater, num_workers=10, drop_last=True)
 
     def val_dataloader(self):
-        return DataLoader(MMX_Dataset(self.val_data, self.config, train=False), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=35, drop_last=True, pin_memory=True)
+        return DataLoader(MMX_Dataset(self.val_data, self.config, train=False), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=10, drop_last=True)
     # For now use validation until proper test split obtained
     def test_dataloader(self):
         return DataLoader(MMX_Dataset(self.train_data, self.config), 1, shuffle=False, collate_fn=self.custom_collater, num_workers=30)

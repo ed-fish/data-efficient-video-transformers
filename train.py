@@ -51,8 +51,12 @@ def get_params():
     device = config["device"].get()
     aggregation=config["aggregation"].get()
     cat_norm = config["cat_norm"].get()
+    pooling = config["pooling"].get()
 
     params = { "experts":experts,
+               "pooling": pooling,
+               "output_shape":config["output_shape"].get(),
+               "hidden_layer":config["hidden_layer"].get(),
                "device":config["device"].get(),
                "emsize": emsize,
                "cat_norm":cat_norm,
@@ -82,6 +86,8 @@ def get_params():
 ##### Training ####
 
 def train():
+
+    torch.multiprocessing.set_sharing_strategy('file_system')
     lr_monitor = LearningRateMonitor(logging_interval='epoch')
     wandb_logger = WandbLogger(project="self-supervised-video", log_model='all')
     transformer_callback = TransformerEval()
@@ -90,11 +96,11 @@ def train():
     # dm = MMXDataModule("data/mmx/mmx_tensors_val.pkl","data/mmx/mmx_tensors_val.pkl", config)
     # configuration
     params = get_params()
-    wandb.init(project="transformer-video", name="img", config=params)
+    wandb.init(project="transformer-video", name="mmx-img", config=params)
     config = wandb.config
     dm = MMXDataModule("data_processing/trailer_temporal/mmx_tensors_train_3.pkl", "data_processing/trailer_temporal/mmx_tensors_val_3.pkl", config)
     
-    model = TransformerModel(config["ntokens"], config["emsize"], config["nhead"],
+    model = TransformerModel(config, config["ntokens"], config["emsize"], config["nhead"],
                              nhid = config["nhid"],
                              batch_size = config["batch_size"],
                              nlayers = config["nlayers"],

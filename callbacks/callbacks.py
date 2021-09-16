@@ -28,27 +28,21 @@ class TransformerEval(Callback):
     def on_shared_end(self, pl_module, state):
 
         target_names = ['Action'  ,'Adventure'  ,'Comedy'  ,'Crime'  ,'Documentary'  ,'Drama'  ,'Family' , 'Fantasy'  ,'History'  ,'Horror'  ,'Music' , 'Mystery'  ,'Science Fiction' , 'Thriller',  'War']
-
         running_labels = torch.cat(pl_module.running_labels)
         running_logits = torch.cat(pl_module.running_logits)
-        running_logits = F.sigmoid(running_logits)
-        t = [-1.0, -0.5, 0.0,0.5,  0.1, 0.2, 0.3, 0.4, 0.5]
+        t = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
         running_logits = running_logits.cpu()
         running_labels = running_labels.cpu()
         for threshold in t:
-            accuracy = f1_score(running_labels.to(int), (running_logits > threshold).to(int), average="weighted", zero_division=1)
-            recall = recall_score(running_labels.to(int), (running_logits > threshold).to(int), average="weighted", zero_division=1)
-            precision = precision_score(running_labels.to(int), (running_logits > threshold).to(int), average="weighted", zero_division=1)
-            avg_precision = average_precision_score(running_labels.to(int), (running_logits > threshold).to(int), average="weighted")
+            accuracy = f1_score(running_labels.to(int), (running_logits > threshold).to(int), average="weighted", zero_division=0)
+            # recall = recall_score(running_labels.to(int), (running_logits > threshold).to(int), average="weighted", zero_division=1)
+            # precision = precision_score(running_labels.to(int), (running_logits > threshold).to(int), average="weighted", zero_division=1)
+            # avg_precision = average_precision_score(running_labels.to(int), (running_logits > threshold).to(int), average="weighted")
 
-            pl_module.log(f"{state}/online/f1@{str(threshold)}", accuracy, on_epoch=True)
-            pl_module.log(f"{state}/online/recall@{str(threshold)}", recall, on_epoch=True)
-            pl_module.log(f"{state}/online/precision@{str(threshold)}", precision, on_epoch=True)
-            pl_module.log(f"{state}/online/avg_precision@{str(threshold)}", avg_precision, on_epoch=True)
-            pl_module.log(f"{state}/online/f1@{str(threshold)}", accuracy, on_epoch=True)
-
-        running_labels = running_labels.to(int).cpu().numpy()
-        running_logits = (running_logits > 0.3).to(int).cpu().numpy()
+            pl_module.log(f"{state}/online/f1@{str(threshold)}", accuracy)
+            #pl_module.log(f"{state}/online/recall@{str(threshold)}", recall, on_epoch=True)
+            #pl_module.log(f"{state}/online/precision@{str(threshold)}", precision, on_epoch=True)
+            #pl_module.log(f"{state}/online/avg_precision@{str(threshold)}", avg_precision, on_epoch=True)
 
         pl_module.running_labels = []
         pl_module.running_logits = []

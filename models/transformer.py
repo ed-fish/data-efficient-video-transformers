@@ -32,7 +32,7 @@ class PositionalEncoding(pl.LightningModule):
         self.std = 0.2
 
     def forward(self, x):
-        x = (x - self.mean) / self.std
+        # x = (x - self.mean) / self.std
         x = x + self.pe[:x.size(0), :]
         return self.dropout(x)
 
@@ -123,6 +123,7 @@ class ContextGating(nn.Module):
 class TransformerModel(pl.LightningModule):
 
     def __init__(self, 
+                 config,
                  ntoken, 
                  ninp, 
                  nhead=4, 
@@ -139,28 +140,32 @@ class TransformerModel(pl.LightningModule):
                  scheduling=False, 
                  token_embedding=15,
                  architecture=None, 
-                 mixing=None):
+                 mixing=None,
+                 ):
         super(TransformerModel, self).__init__()
 
         # self.criterion = nn.CrossEntropyLoss()
-        self.criterion = nn.BCEWithLogitsLoss()
+        self.criterion = nn.BCELoss()
         self.seq_len = seq_len
         self.learning_rate = learning_rate
-        self.pos_encoder = PositionalEncoding(ninp, dropout, max_len=seq_len) # shared dropout value for pe and tm(el)
-        encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout)
+        self.pos_encoder = PositionalEncoding(ninp//2, dropout, max_len=seq_len) # shared dropout value for pe and tm(el)
+        encoder_layers = TransformerEncoderLayer(ninp//2, nhead, nhid, dropout)
         self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
-        self.encoder = nn.Embedding(ntoken, ninp).to(self.device)
-        self.decoder = nn.Linear(ninp, token_embedding)
+        self.encoder = nn.Linear(ninp, ninp//2)
+        self.decoder = nn.Linear(ninp//2, token_embedding)
         self.classifier = nn.Sequential(
-                nn.Linear(4024, 1024, bias=False),
+                nn.Linear(config["token_embedding"], config["hidden_layer"]),
                 nn.ReLU(),
-                nn.Linear(1024, 512),
-                nn.ReLU(),
-                nn.Dropout(p=dropout),
-                nn.Linear(512, 128),
+                nn.Linear(config["hidden_layer"], config["hidden_layer"]),
                 nn.ReLU(),
                 nn.Dropout(p=dropout),
-                nn.Linear(128, ntoken))
+                nn.Linear(config["hidden_layer"], config["output_shape"]),
+                nn.ReLU(),
+                nn.Dropout(p=dropout),
+                nn.Linear(config["output_shape"], ntoken))
+        self.classifier_2 = nn.Sequential(
+                nn.Linear(token_embedding * seq_len, ntoken)
+                )
         self.mixing = mixing
         self.architecture = architecture
         self.collab = CollaborativeGating()
@@ -168,9 +173,10 @@ class TransformerModel(pl.LightningModule):
         self.init_weights()
         self.running_labels = []
         self.running_logits = []
+        self.config = config
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
+        optimizer = torch.optim.SGD(self.parameters(), lr=self.learning_rate, momentum=self.config["momentum"], weight_decay=self.config["weight_decay"])
         return optimizer
 
     def shared_step(self, data, target):
@@ -205,13 +211,28 @@ class TransformerModel(pl.LightningModule):
         transform_t = transform_t.unsqueeze(0)
 
         # Pooling before classification?
-        transform_t = F.adaptive_avg_pool1d(transform_t, 4024)
+        if self.config["pooling"] == "avg":
+            transform_t = F.adaptive_avg_pool1d(transform_t, self.config["token_embedding"])
+            transform_t = transform_t.squeeze(0)
+            pooled_result = self.classifier(transform_t)
+        elif self.config["pooling"] == "max":
+            transform_t = F.adaptive_max_pool1d(transform_t, self.config["token_embedding"])
+            transform_t = transform_t.squeeze(0)
+            pooled_result = self.classifier(transform_t)
+        elif self.config["pooling"] == "total":
+            transform_t = F.adaptive_max_pool1d(transform_t, self.config["ntokens"])
+            pooled_result = transform_t.squeeze(0)
+        elif self.config["pooling"] == "none":
+            transform_t = self.classifier_2(transform_t)
+            pooled_result = transform_t.squeeze(0)
+            pooled_result = torch.sigmoid(pooled_result)
+
+        print(pooled_result[0])
+
 
         #print("output pool", transform_t.shape)
-        transform_t = transform_t.squeeze(0)
 
         # Send total embeddings to classifier - alternative to BERT Token
-        pooled_result = self.classifier(transform_t)
 
         #print("output classifier", pooled_result.shape)
 
@@ -272,10 +293,12 @@ class TransformerModel(pl.LightningModule):
     def forward(self, src, src_mask):
         #src = self.encoder(src) * math.sqrt(self.hparams.ninp)
         src_mask = self.generate_square_subsequent_mask(self.seq_len)
+        src = self.encoder(src)
         src = self.pos_encoder(src)
         src_mask = src_mask.to(self.device)
         output = self.transformer_encoder(src, src_mask)
         output = self.decoder(output)
+        output = torch.sigmoid(output)
         # output = F.softmax(output)
         # Do not include softmax if nn.crossentropy as softmax included via NLLoss
         return output

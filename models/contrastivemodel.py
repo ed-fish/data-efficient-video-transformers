@@ -12,10 +12,10 @@ from models.losses.ntxent import ContrastiveLoss
 class SpatioTemporalContrastiveModel(pl.LightningModule):
     def __init__(self, config):
         super().__init__()
-        self.input_layer_size = 2048
-        self.hidden_layer_size = 1024
-        self.projection_size = 512
-        self.output_layer_size = 128
+        self.input_layer_size = config["input_shape"]
+        self.hidden_layer_size = config["hidden_layer"]
+        self.projection_size = config["projection_size"]
+        self.output_layer_size = config["output_shape"]
         self.batch_size = config["batch_size"]
         self.num_samples = config["num_samples"]
         self.config = config

@@ -90,14 +90,14 @@ class MMXDataModule(pl.LightningDataModule):
         self.val_data = self.clean_data(self.val_data)
 
     def train_dataloader(self):
-        return DataLoader(MMXDataset(self.train_data, self.config), self.bs, shuffle=True, collate_fn=self.custom_collater, num_workers=20, drop_last=True)
+        return DataLoader(MMXDataset(self.train_data, self.config), self.bs, shuffle=True, collate_fn=self.custom_collater, num_workers=10, drop_last=True)
 
     def val_dataloader(self):
-        return DataLoader(MMXDataset(self.val_data, self.config), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=20, drop_last=True)
+        return DataLoader(MMXDataset(self.val_data, self.config), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=10, drop_last=True)
 
 # For now use validation until proper test split obtained
     def test_dataloader(self):
-        return DataLoader(MMXDataset(self.train_data, self.config), 1, shuffle=False, collate_fn=self.custom_collater, num_workers=20)
+        return DataLoader(MMXDataset(self.train_data, self.config), 1, shuffle=False, collate_fn=self.custom_collater, num_workers=10)
 
 
 class MMXDataset(Dataset):
