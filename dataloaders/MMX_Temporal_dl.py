@@ -44,6 +44,7 @@ class MMXDataModule(pl.LightningDataModule):
         print(data_frame.describe())
 
         longest_seq = 0
+        experts = self.config["experts"]
         for i in range(len(data_frame)):
             data = data_frame.at[i, "scenes"]
             label = data_frame.at[i, "label"]
@@ -55,14 +56,26 @@ class MMXDataModule(pl.LightningDataModule):
                 data_frame = data_frame.drop(i)
                 continue
             data_chunk = list(data.values())
+
             if len(data_chunk) > longest_seq:
                 longest_seq = len(data_chunk)
             if len(data_chunk) < 5:
                 data_frame = data_frame.drop(i)
                 continue
 
+            if self.find_keys(data_chunk, experts):
+                data_frame = data_frame.drop(i)
+
         data_frame = data_frame.reset_index(drop=True)
         return data_frame
+
+    def find_keys(self, data_chunk, experts):
+        for p in range(len(data_chunk)):
+            for e in experts:
+                for k, v in data_chunk[p].items():
+                    if e not in v.keys():
+                        return True
+            return False
 
     def load_data(self, db):
         data = []
@@ -168,7 +181,7 @@ class MMXDataset(Dataset):
 
         for i, d in enumerate(scenes.values()):
             try:
-                if len(expert_list) < self.seq_len:
+               if len(expert_list) < self.seq_len:
                     expert_tensor_list = []
 
                     # if there are multiple experts find out the mixing method
@@ -189,13 +202,13 @@ class MMXDataset(Dataset):
                             expert_list.append(expert_tensor_list)
                     else: 
                         expert_list.append(self.retrieve_tensors(d, self.config["experts"][0])) # otherwise return one expert
-
             except KeyError:
                 continue
             except IndexError:
                 continue
             except IsADirectoryError:
                 continue
+
         if self.config["mixing_method"] == "collab":
 
             while len(expert_list) < self.seq_len:

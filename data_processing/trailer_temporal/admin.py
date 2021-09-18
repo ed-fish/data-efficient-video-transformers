@@ -9,13 +9,13 @@ def pickleLoader(pklFile):
     except EOFError:
         pass
 
-with open("mmx_tensors_train.pkl", "rb") as pkly:
+with open("val_tst.pkl", "rb") as pkly:
     for entry in pickleLoader(pkly):
         if "Horror/TheWolfman" in entry["path"]:
             print(entry["path"])
             pass
         else:
-            with open("mmx_tensors_train_3.pkl", 'ab') as pkly:
+            with open("val_tst_3.pkl", 'ab') as pkly:
                 pkl.dump(entry, pkly)
 
  
