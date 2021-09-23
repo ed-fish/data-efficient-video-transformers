@@ -96,9 +96,9 @@ def train():
     # dm = MMXDataModule("data/mmx/mmx_tensors_val.pkl","data/mmx/mmx_tensors_val.pkl", config)
     # configuration
     params = get_params()
-    wandb.init(project="transformer-video", name="mmx-img", config=params)
+    wandb.init(project="transformer-video", name="mmx-collab-noaudio", config=params)
     config = wandb.config
-    dm = MMXDataModule("data_processing/trailer_temporal/mmx_tensors_train_3.pkl", "data_processing/trailer_temporal/mmx_tensors_val_3.pkl", config)
+    dm = MMXDataModule("data_processing/trailer_temporal/train_tst_3.pkl", "data_processing/trailer_temporal/val_tst_3.pkl", config)
     
     model = TransformerModel(config, config["ntokens"], config["emsize"], config["nhead"],
                              nhid = config["nhid"],
@@ -112,7 +112,7 @@ def train():
                              token_embedding = config["token_embedding"],
                              architecture = config["architecture"],
                              mixing = config["mixing_method"])
-    trainer = pl.Trainer(gpus=[config["device"]], callbacks=[lr_monitor, transformer_callback], max_epochs=config["epochs"], logger=wandb_logger)
+    trainer = pl.Trainer(gpus=[config["device"]], callbacks=[lr_monitor, transformer_callback], max_epochs=config["epochs"], logger=wandb_logger, accelerator="ddp")
     trainer.fit(model, datamodule=dm)
 
 train()

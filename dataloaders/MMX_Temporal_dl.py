@@ -4,6 +4,7 @@ import ast
 import random
 import csv
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import _pickle as pickle
 import os
@@ -90,7 +91,7 @@ class MMXDataModule(pl.LightningDataModule):
         self.val_data = self.clean_data(self.val_data)
 
     def train_dataloader(self):
-        return DataLoader(MMXDataset(self.train_data, self.config), self.bs, shuffle=True, collate_fn=self.custom_collater, num_workers=10, drop_last=True)
+        return DataLoader(MMXDataset(self.train_data, self.config), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=10, drop_last=True)
 
     def val_dataloader(self):
         return DataLoader(MMXDataset(self.val_data, self.config), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=10, drop_last=True)
@@ -148,6 +149,9 @@ class MMXDataset(Dataset):
             pool_list = pool_list.unsqueeze(0)
             pooled_tensor = F.adaptive_avg_pool2d(pool_list, (1, self.config["input_shape"]), dim=-1)
             t = pooled_tensor.squeeze(0)
+        if self.config["mixing_method"] == "post_collab":
+            if t.shape[-1] != 2048:
+                t = nn.ConstantPad1d((0, 2048 - t.shape[-1]), 0)(t) # zero pad dimensions. 
         return t
 
 
@@ -170,13 +174,16 @@ class MMXDataset(Dataset):
             try:
                 if len(expert_list) < self.seq_len:
                     expert_tensor_list = []
-
                     # if there are multiple experts find out the mixing method
                     if len(self.config["experts"]) > 1:
                         if self.config["mixing_method"] == "none":
                             assert False, "Mixing method must be defined for multi modal experts"
                         for expert in self.config["experts"]:
-                            expert_tensor_list.append(self.retrieve_tensors(d, expert)) # Retrieve the tensors for each expert.
+                            if self.config["mixing_method"] == "concat-norm":
+                                t = F.normalize(self.retrieve_tensors(d, expert), p=2, dim=-1)
+                            else:
+                                t = self.retrieve_tensors(d, expert)
+                            expert_tensor_list.append(t) # Retrieve the tensors for each expert.
                         if self.config["mixing_method"] == "concat":
                             cat_experts = torch.cat(expert_tensor_list, dim =-1) # concat experts for pre model
                             #expert_list.append(cat_experts)
@@ -185,31 +192,33 @@ class MMXDataset(Dataset):
                             if self.config["cat_softmax"] == True:
                                 cat_experts = F.softmax(cat_experts, dim=-1)
                             expert_list.append(cat_experts)
-                        elif self.config["mixing_method"] == "collab":
-                            expert_list.append(expert_tensor_list)
-                    else: 
+                        elif self.config["mixing_method"] == "collab" or self.config["mixing_method"] == "post_collab":
+                            expert_list.append(torch.stack(expert_tensor_list))
+                    else:
                         expert_list.append(self.retrieve_tensors(d, self.config["experts"][0])) # otherwise return one expert
-
             except KeyError:
-                continue
+                print("key error")
+                #continue
             except IndexError:
                 continue
             except IsADirectoryError:
                 continue
-        if self.config["mixing_method"] == "collab":
-
+        if self.config["mixing_method"] == "collab" or self.config["mixing_method"] == "post_collab":
             while len(expert_list) < self.seq_len:
                 pad_list = []
                 for i in range(len(self.config["experts"])):
                     pad_list.append(torch.zeros_like(expert_list[0][0]))
-                expert_list.append(pad_list)
-        
+                expert_list.append(torch.stack(pad_list))
+            if self.config["mixing_method"] == "post_collab":
+                expert_list = torch.stack(expert_list)
+            expert_list = expert_list.squeeze()
         else:
             while len(expert_list) < self.seq_len:
                 expert_list.append(torch.zeros_like(expert_list[0]))
 
-            expert_list = torch.cat(expert_list, dim=0)
+            expert_list = torch.cat(expert_list, dim=0) # scenes 
             expert_list = expert_list.unsqueeze(0)
+        
 
         return {"label":label, "experts":expert_list}
 

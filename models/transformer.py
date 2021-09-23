@@ -1,4 +1,5 @@
 import confuse 
+import numpy as np
 import math
 import pytorch_lightning as pl
 import torch
@@ -81,13 +82,12 @@ class CollaborativeGating(pl.LightningModule):
                 expert_attention_vec = torch.stack(expert_attention_vec, dim=0).sum(dim=0) # concat all attention vectors
                 expert_vector = self.geu(expert_attention_vec) # apply gated embedding
                 scene_list.append(expert_vector)
-                expert_vector = self.geu(expert_attention_vec) # apply gated embedding
-                scene_list.append(expert_vector)
             scene_stack = torch.stack(scene_list)
             batch_list.append(scene_stack)
         batch = torch.stack(batch_list, dim = 0)
         batch = batch.squeeze(2)
         return batch
+
 
 
 class GatedEmbeddingUnit(nn.Module):
@@ -164,8 +164,13 @@ class TransformerModel(pl.LightningModule):
                 nn.Dropout(p=dropout),
                 nn.Linear(config["output_shape"], ntoken))
         self.classifier_2 = nn.Sequential(
-                nn.Linear(token_embedding * seq_len, ntoken)
+                nn.Linear(token_embedding * seq_len, token_embedding)
                 )
+
+        self.cat_classifier = nn.Sequential(
+                nn.Linear(token_embedding * len(config["experts"]), ntoken)
+                )
+
         self.mixing = mixing
         self.architecture = architecture
         self.collab = CollaborativeGating()
@@ -179,24 +184,54 @@ class TransformerModel(pl.LightningModule):
         optimizer = torch.optim.SGD(self.parameters(), lr=self.learning_rate, momentum=self.config["momentum"], weight_decay=self.config["weight_decay"])
         return optimizer
 
-    def shared_step(self, data, target):
+    def post_collab(self, data):
+        # [BATCH, [SEQUENCE, [EXPERTS]
+        data = torch.stack(data)
+        data = data.transpose(0, 2)
+        collab_array = []
+        for x in range(len(self.config["experts"])):
+            d = data[x,:,:,:]
+           
+            d = self.shared_step(d)
+            collab_array.append(d)
+        stacked_array = torch.stack(collab_array) # [expert, batch, dimension]
+        stacked_array = stacked_array.transpose(0, 1)
+        data = torch.flatten(stacked_array, 1, -1)
+        data = self.cat_classifier(data)
+        data = torch.sigmoid(data)
+        return data
+
+    def pad(self, tensor):
+        curr_expert = F.interpolate(tensor, size=2048)
+        return curr_expert
+
+    def format_target(self, target):
+        target = torch.cat(target, dim=0) 
+        target = target.squeeze()
+        return target
+
+    def shared_step(self, data):
         # flatten or mix output embeddings
         if self.mixing== "collab" and self.architecture=="pre-trans":
             data = self.collab(data)
+        elif self.mixing =="post_collab":
+            data = data
         else:
             data = torch.cat(data, dim=0)
-        ##print("shared step 1:", data.shape)
 
-        target = torch.cat(target, dim=0)
-
+        # if data.shape[-1] != 2048:
+        #     data = self.pad(data)
         # reshape for transformer output (B, S, E) -> (S, B, E)
-        data = data.permute(1, 0, 2)
+
+        if not self.mixing == "post_collab":
+            data = data.permute(1, 0, 2)
         src_mask = self.generate_square_subsequent_mask(data.size(0))
         src_mask = src_mask.to(self.device)
 
+        output_vec = []
+
         # FORWARD
         output = self(data, src_mask)
-
         ##print("output step 1:", output.shape)
 
         # reshape back to original (S, B, E) -> (B, S, E)
@@ -227,29 +262,29 @@ class TransformerModel(pl.LightningModule):
             pooled_result = transform_t.squeeze(0)
             pooled_result = torch.sigmoid(pooled_result)
 
-        print(pooled_result[0])
-
-
-        #print("output pool", transform_t.shape)
+        # print("output pool", transform_t.shape)
 
         # Send total embeddings to classifier - alternative to BERT Token
 
-        #print("output classifier", pooled_result.shape)
+        # print("output classifier", pooled_result.shape)
 
         # pooled_result = F.adaptive_avg_pool3d(transform_t, (32, 1, 15))
         # pooled_result = pooled_result.squeeze().squeeze()
 
         # Cross Entropy includes softmax https://bit.ly/3f73RJ7 - add here for others. 
         # reshape after pooling
-        target = target.squeeze()
 
-        return pooled_result, target
+        return pooled_result
 
     def training_step(self, batch, batch_idx):
         data = batch["experts"]
         target = batch["label"]
 
-        data, target = self.shared_step(data, target)
+        if self.config["mixing_method"] == "post_collab":
+            data = self.post_collab(data)
+        else:
+            data = self.shared_step(data)
+        target = self.format_target(target)
         target = target.float()
 
         loss = self.criterion(data, target)
@@ -266,7 +301,13 @@ class TransformerModel(pl.LightningModule):
         data = batch["experts"]
         target = batch["label"]
 
-        data, target = self.shared_step(data, target)
+        if self.config["mixing_method"] == "post_collab":
+            data = self.post_collab(data)
+        else:
+            data = self.shared_step(data)
+
+        target = self.format_target(target)
+
         target = target.float()
 
         #target = torch.argmax(target, dim=-1)
