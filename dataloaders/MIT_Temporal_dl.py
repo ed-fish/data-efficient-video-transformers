@@ -17,11 +17,12 @@ from sklearn.model_selection import train_test_split
 
 class MITDataModule(pl.LightningDataModule):
 
-    def __init__(self, train_data,val_data, config):
+    def __init__(self, train_data,val_data, config, train=True):
         super().__init__()
         self.train_data = train_data
         self.val_data = val_data
         self.config = config
+        self.train = train
         self.bs = self.config["batch_size"]
 
     def custom_collater(self, batch):
@@ -36,7 +37,7 @@ class MITDataModule(pl.LightningDataModule):
     #    data = self.load_data(self.pickle_file)
     #    self.data = self.clean_data(data)
 
-    def clean_data(self, data_frame):
+    def clean_data(self, data_frame, train):
 
         print("cleaning data")
         print(len(data_frame))
@@ -47,8 +48,13 @@ class MITDataModule(pl.LightningDataModule):
             for d in data.values():
                 if len(d.keys()) < 2:
                     drop = True
-                if not "img-embeddings" in d.keys():
-                    drop = True
+                for e in self.config["experts"]:
+                    if not train:
+                        e = "test-" + e
+                    if not e in d.keys():
+                        drop = True
+                #if not "img-embeddings" in d.keys():
+                #    drop = True
             if drop:
                 print("dropping missing experts")
                 data_frame = data_frame.drop(i)
@@ -114,38 +120,45 @@ class MITDataModule(pl.LightningDataModule):
         print("length", len(data_frame))
 
         # TODO remove - 64 Bx2 testing only
-        data_frame = data_frame.head(168)
+        # data_frame = data_frame.head(3000)
 
         return data_frame
 
     def setup(self, stage):
 
         self.train_data = self.load_data(self.train_data)
-        self.train_data = self.clean_data(self.train_data)
-        
+        self.train_data = self.clean_data(self.train_data, train=True)
+        #self.train_data, self.val_data = train_test_split(self.train_data, test_size=0.2) 
+
         self.val_data = self.load_data(self.val_data)
-        self.val_data = self.clean_data(self.val_data)
+        self.val_data = self.clean_data(self.val_data, train=False)
+        print(len(self.train_data))
+        print(len(self.val_data))
+        self.train_data = self.train_data.reset_index(drop=True)
+        self.val_data = self.val_data.reset_index(drop=True)
+        
 
     def train_dataloader(self):
         print("Loading train dataloader")
-        return DataLoader(MITDataset(self.train_data, self.config), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
+        return DataLoader(MITDataset(self.train_data, self.config, train=True), self.bs, shuffle=True, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
 
     def val_dataloader(self):
-        return DataLoader(MITDataset(self.val_data, self.config), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
+        return DataLoader(MITDataset(self.val_data, self.config, train=False), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
     # For now use validation until proper test split obtained
     def test_dataloader(self):
         return DataLoader(MITDataset(self.train_data, self.config), 1, shuffle=False, collate_fn=self.custom_collater, num_workers=0)
 
 
 class MITDataset(Dataset):
-    def __init__(self, data, config):
+    def __init__(self, data, config, train=True):
         super().__init__()
 
         self.config = config
         self.data_frame = data
-        print(self.data_frame)
+        print(self.data_frame.describe())
         self.aggregation = self.config["aggregation"]
         self.label_df = self.load_labels("/home/ed/self-supervised-video/data_processing/moments_categories.csv")
+        self.train = train
 
     def __len__(self):
         return len(self.data_frame)
@@ -172,6 +185,25 @@ class MITDataset(Dataset):
         tensor = torch.load(tensor, map_location=torch.device('cpu'))
         return tensor
 
+    def return_expert_path(self, path, expert):
+        return path[expert]
+
+    def retrieve_tensors(self, path, expert):
+        tensor_paths = self.return_expert_path(path, expert)
+        if expert == "test-img-embeddings" or expert == "location-embeddings":
+            tensor_paths = tensor_paths[0]
+        if self.config["frame_agg"] == "none":
+            t = self.load_tensor(tensor_paths)
+            if expert == "audio-embeddings":
+                t = t.unsqueeze(0)
+        elif self.config["frame_agg"] == "pool":
+            pool_list = [self.load_tensor(x) for x in tensor_paths]
+            pool_list = torch.stack(pool_list, dim=-1)
+            pool_list = pool_list.unsqueeze(0)
+            pooled_tensor = F.adaptive_avg_pool2d(pool_list, (1, self.config["input_shape"]), dim=-1)
+            t = pooled_tensor.squeeze(0)
+        return t
+
     def __getitem__(self, idx):
 
         label =  self.data_frame.at[idx, "label"]
@@ -182,9 +214,71 @@ class MITDataset(Dataset):
         # x_i, x_j = random.sample(list(data.values()), 2)
         expert_list = []
 
+        ##################################
+
+        #for i, d in enumerate(data.values()):
+        #    #try:
+        #    if len(expert_list) < 3:
+        #        expert_tensor_list = []
+
+        #        # if there are multiple experts find out the mixing method
+        #        if len(self.config["experts"]) > 1:
+        #            if self.config["mixing_method"] == "none":
+        #                assert False, "Mixing method must be defined for multi modal experts"
+        #            for expert in self.config["experts"]:
+        #                expert_tensor_list.append(self.retrieve_tensors(d, expert)) # Retrieve the tensors for each expert.
+        #            if self.config["mixing_method"] == "concat":
+        #                cat_experts = torch.cat(expert_tensor_list, dim =-1) # concat experts for pre model
+        #                #expert_list.append(cat_experts)
+        #                if self.config["cat_norm"] == True:
+        #                    cat_experts = F.normalize(cat_experts, p=2, dim=-1)
+        #                if self.config["cat_softmax"] == True:
+        #                    cat_experts = F.softmax(cat_experts, dim=-1)
+        #                expert_list.append(cat_experts)
+        #            elif self.config["mixing_method"] == "collab":
+        #                expert_list.append(expert_tensor_list)
+        #        else: 
+        #            expert_list.append(self.retrieve_tensors(d, self.config["experts"][0])) # otherwise return one expert
+
+        #    # except KeyError:
+        #    #     continue
+        #    # except IndexError:
+        #    #     continue
+        #    # except IsADirectoryError:
+        #    #     continue
+        #if self.config["mixing_method"] == "collab":
+
+        #    while len(expert_list) < 3:
+        #        pad_list = []
+        #        for i in range(len(self.config["experts"])):
+        #            pad_list.append(torch.zeros_like(expert_list[0][0]))
+        #        expert_list.append(pad_list)
+        
+        #else:
+        #    while len(expert_list) < 3:
+        #        expert_list.append(torch.zeros_like(expert_list[0]))
+
+        #    expert_list = torch.cat(expert_list, dim=0)
+        #    expert_list = expert_list.unsqueeze(0)
+
+        #    label = torch.tensor([label])
+
+        #return {"label":label, "experts":expert_list}
+
+        ######################################
+
+
         for i, d in enumerate(data.values()):
             if i < 3:
-                expert_list.append(self.load_tensor(d["img-embeddings"][0]))
+                if self.train:
+                    ex = "img-embeddings"
+                else:
+                    ex = "test-img-embeddings"
+                expert_list.append(self.load_tensor(d[ex][0]))
+
+        if len(expert_list) < 3:
+            expert_list.append(torch.zeros_like(expert_list[0]))
+            
         expert_list = torch.cat(expert_list, dim=0)
         expert_list = expert_list.unsqueeze(0)
         label = torch.tensor([label])
@@ -202,6 +296,7 @@ class MITDataset(Dataset):
         if self.aggregation == "debugging":
             experts_xi = torch.cat(experts_xi, dim=-1)
             experts_xj = torch.cat(experts_xj, dim=-1)
+
 
         return {"label":label, "path":path, "expert_list":expert_list}
 

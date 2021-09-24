@@ -18,52 +18,26 @@ import seaborn as sns
 from sklearn.metrics import f1_score, recall_score, average_precision_score, precision_score
 from torchmetrics.functional import f1, auroc
 #from torchmetrics.functional import accuracy
-from pytorch_lightning.metrics.functional import accuracy
+import torchmetrics
 
 class TransformerEval(Callback):
+    def __init__(self):
+        self.best_acc = 0
 
     def on_validation_epoch_end(self, trainer, pl_module):
-        self.on_shared_end(pl_module, "val")
-
-    def on_shared_end(self, pl_module, state):
-
-        target_names = ['Action'  ,'Adventure'  ,'Comedy'  ,'Crime'  ,'Documentary'  ,'Drama'  ,'Family' , 'Fantasy'  ,'History'  ,'Horror'  ,'Music' , 'Mystery'  ,'Science Fiction' , 'Thriller',  'War']
-
-        running_labels = torch.cat(pl_module.running_labels)
-        running_logits = torch.cat(pl_module.running_logits)
-        running_logits = F.sigmoid(running_logits)
-        t = [-1.0, -0.5, 0.0,0.5,  0.1, 0.2, 0.3, 0.4, 0.5]
-        running_logits = running_logits.cpu()
-        running_labels = running_labels.cpu()
-        for threshold in t:
-            accuracy = f1_score(running_labels.to(int), (running_logits > threshold).to(int), average="weighted", zero_division=1)
-            recall = recall_score(running_labels.to(int), (running_logits > threshold).to(int), average="weighted", zero_division=1)
-            precision = precision_score(running_labels.to(int), (running_logits > threshold).to(int), average="weighted", zero_division=1)
-            avg_precision = average_precision_score(running_labels.to(int), (running_logits > threshold).to(int), average="weighted")
-
-            pl_module.log(f"{state}/online/f1@{str(threshold)}", accuracy, on_epoch=True)
-            pl_module.log(f"{state}/online/recall@{str(threshold)}", recall, on_epoch=True)
-            pl_module.log(f"{state}/online/precision@{str(threshold)}", precision, on_epoch=True)
-            pl_module.log(f"{state}/online/avg_precision@{str(threshold)}", avg_precision, on_epoch=True)
-            pl_module.log(f"{state}/online/f1@{str(threshold)}", accuracy, on_epoch=True)
-
-        running_labels = running_labels.to(int).cpu().numpy()
-        running_logits = (running_logits > 0.3).to(int).cpu().numpy()
-
+        running_labels = torch.tensor(pl_module.running_labels)
+        running_logits = torch.tensor(pl_module.running_logits)
+        acc = torch.sum(running_logits==running_labels).item() / (len(running_labels) * 1.0)
+        pl_module.log("val/accuracy/epoch", acc, on_step=False, on_epoch=True) 
+        print(f"acc:{acc} len_S:{len(running_labels)} ex:{running_labels[0]} : {running_logits[0]}")
         pl_module.running_labels = []
         pl_module.running_logits = []
 
-        label_str = []
-        target_str = []
+        if acc > self.best_acc:
+            trainer.save_checkpoint("mit_location_acc.ckkpt")
+            self.best_acc = acc
 
-
-    def translate_labels(self, label_vec):
-        target_names = ['Action'  ,'Adventure'  ,'Comedy'  ,'Crime'  ,'Documentary'  ,'Drama'  ,'Family' , 'Fantasy'  ,'History'  ,'Horror'  ,'Music' , 'Mystery'  ,'Science Fiction' , 'Thriller',  'War']
-        labels = []
-        for i, l in enumerate(label_vec):
-            if l:
-                labels.append(target_names[i])
-        return labels
+        
 
 
 class SSLOnlineEval(Callback):

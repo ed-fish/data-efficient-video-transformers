@@ -15,7 +15,7 @@ from pytorch_lightning.callbacks import LearningRateMonitor
 from pl_bolts.optimizers.lr_scheduler import LinearWarmupCosineAnnealingLR
 from torch.nn import Transformer
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
-from callbacks.callbacks import TransformerEval
+# from callbacks.callbacks import TransformerEval
 
 class PositionalEncoding(pl.LightningModule):
     def __init__(self, d_model, dropout=0.1, max_len=5):
@@ -143,24 +143,16 @@ class TransformerModel(pl.LightningModule):
         super(TransformerModel, self).__init__()
 
         self.criterion = nn.CrossEntropyLoss()
+        self.accuracy = torchmetrics.Accuracy(num_classes=305)
         # self.criterion = nn.BCEWithLogitsLoss()
         self.seq_len = seq_len
         self.learning_rate = learning_rate
-        self.pos_encoder = PositionalEncoding(ninp, dropout, max_len=seq_len) # shared dropout value for pe and tm(el)
-        encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout)
+        self.pos_encoder = PositionalEncoding(ninp//2, dropout, max_len=seq_len) # shared dropout value for pe and tm(el)
+        encoder_layers = TransformerEncoderLayer(ninp//2, nhead, nhid, dropout)
         self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
-        self.encoder = nn.Embedding(ntoken, ninp).to(self.device)
-        self.decoder = nn.Linear(ninp, token_embedding)
-        self.classifier = nn.Sequential(
-                nn.Linear(4024, 1024, bias=False),
-                nn.ReLU(),
-                nn.Linear(1024, 512),
-                nn.ReLU(),
-                nn.Dropout(p=dropout),
-                nn.Linear(512, 128),
-                nn.ReLU(),
-                nn.Dropout(p=dropout),
-                nn.Linear(128, ntoken))
+        self.encoder = nn.Linear(ninp, ninp//2).to(self.device)
+        self.decoder = nn.Linear(ninp//2, token_embedding)
+        self.classifier = nn.Linear(305 * seq_len, 305)
         self.mixing = mixing
         self.architecture = architecture
         self.collab = CollaborativeGating()
@@ -170,7 +162,7 @@ class TransformerModel(pl.LightningModule):
         self.running_logits = []
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
+        optimizer = torch.optim.SGD(self.parameters(), lr=self.learning_rate)
         return optimizer
 
     def shared_step(self, data, target):
@@ -178,10 +170,16 @@ class TransformerModel(pl.LightningModule):
         if self.mixing== "collab" and self.architecture=="pre-trans":
             data = self.collab(data)
         else:
-            data = torch.cat(data, dim=0)
+            try:
+                data = torch.cat(data, dim=0)
+            except:
+                for d in data:
+                    print(d.shape)
+
         ##print("shared step 1:", data.shape)
 
         target = torch.cat(target, dim=0)
+        data = self.encoder(data)
 
         # reshape for transformer output (B, S, E) -> (S, B, E)
         data = data.permute(1, 0, 2)
@@ -201,17 +199,22 @@ class TransformerModel(pl.LightningModule):
         # flatten sequence embeddings (S, B, E) -> (B, S * E)
         transform_t = transform_t.reshape(self.bs, -1)
 
+        pooled_result = self.classifier(transform_t)
+        # pooled_result = pooled_result.squeeze(0)
+        # pooled_result = torch.sigmoid(pooled_result)
+
+
         #print("output_reshape 2", output.shape)
-        transform_t = transform_t.unsqueeze(0)
+        #transform_t = transform_t.unsqueeze(0)
 
         # Pooling before classification?
-        transform_t = F.adaptive_avg_pool1d(transform_t, 4024)
+        #transform_t = F.adaptive_max_pool1d(transform_t, 305)
 
         #print("output pool", transform_t.shape)
-        transform_t = transform_t.squeeze(0)
+        #pooled_result = transform_t.squeeze(0)
 
         # Send total embeddings to classifier - alternative to BERT Token
-        pooled_result = self.classifier(transform_t)
+        # pooled_result = self.classifier(transform_t)
 
         #print("output classifier", pooled_result.shape)
 
@@ -220,7 +223,7 @@ class TransformerModel(pl.LightningModule):
 
         # Cross Entropy includes softmax https://bit.ly/3f73RJ7 - add here for others. 
         # reshape after pooling
-        target = target.squeeze()
+        #target = target.squeeze()
 
         return pooled_result, target
 
@@ -229,10 +232,9 @@ class TransformerModel(pl.LightningModule):
         target = batch["label"]
 
         data, target = self.shared_step(data, target)
-        target = target.float()
 
         loss = self.criterion(data, target)
-        self.log("train/loss", loss, on_step=True, on_epoch=True)
+        self.log("train/loss", loss)
         #acc_preds = self.preds_acc(data)
 
         # gradient clipping for stability
@@ -246,17 +248,16 @@ class TransformerModel(pl.LightningModule):
         target = batch["label"]
 
         data, target = self.shared_step(data, target)
-        target = target.float()
-
-        #target = torch.argmax(target, dim=-1)
         loss = self.criterion(data, target)
-        target = F.softmax(target)
+        data = torch.argmax(data, dim=-1)
+
+        acc = torch.sum(data==target).item() / (len(target) * 1.0)
+        self.log("val/acc/step", acc, on_epoch=False)
         
         # acc_preds = self.preds_acc(data)
-        self.running_labels.append(target)
-        self.running_logits.append(data)
-
-        self.log("val/loss", loss, on_step=True, on_epoch=True)
+        self.running_labels += target.cpu()
+        self.running_logits += data.cpu()
+        self.log("val/loss", loss)
         return loss
 
     def generate_square_subsequent_mask(self, sz):
@@ -277,6 +278,7 @@ class TransformerModel(pl.LightningModule):
         src_mask = src_mask.to(self.device)
         output = self.transformer_encoder(src, src_mask)
         output = self.decoder(output)
+        output = torch.sigmoid(output)
         # output = F.softmax(output)
         # Do not include softmax if nn.crossentropy as softmax included via NLLoss
         return output

@@ -121,7 +121,6 @@ class MITDataModule(pl.LightningDataModule):
 
         self.train_data = self.load_data(self.train_data)
         self.train_data = self.clean_data(self.train_data)
-
         self.train_data, self.val_data = train_test_split(self.train_data, test_size=0.2) 
         print(len(self.train_data))
         print(len(self.val_data))

@@ -12,7 +12,7 @@ import resource
 
 
 def create_dictionary(filepath):
-    experts = ["audio-embeddings", "location-embeddings", "img-embeddings", "video-embeddings"]
+    experts = ["audio-embeddings", "test-location-embeddings", "test-img-embeddings", "test-video-embeddings"]
 
     #orig_dir = filepath.replace("/mnt/bigelow/scratch/mmx_aug", "/mnt/fvpbignas/datasets/mmx_raw")
 
@@ -57,7 +57,7 @@ def squish_folders(input_dir):
                 all_files.append(video)
             print(labels, "complete")
     print("length of files", len(all_files))
-    with open("mit_train_cache.pkl", "wb") as cache:
+    with open("mit_val_cache.pkl", "wb") as cache:
         pickle.dump(all_files, cache)
 
 
@@ -66,16 +66,15 @@ def mp_handler():
     data_list = []
     count = 0
 
-    squish_folders("/mnt/fvpbignas/datasets/moments_in_time/Moments_in_Time_Aug/training")
-    with open("mit_train_cache.pkl", 'rb') as cache:
+    squish_folders("/mnt/bigelow/scratch/mit_no_crop/validation")
+    with open("mit_val_cache.pkl", 'rb') as cache:
         data = pickle.load(cache)
         random.shuffle(data)
 
-    with open("mit_tensors_train.pkl", 'ab') as pkly:
+    with open("mit_tensors_val.pkl", 'ab') as pkly:
         for result in p.imap(create_dictionary, tqdm.tqdm(data, total=len(data))):
             if result:
                 pickle.dump(result, pkly)
-
 
 if __name__ == "__main__":
     torch.multiprocessing.set_sharing_strategy('file_system')

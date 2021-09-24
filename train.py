@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchmetrics
 import wandb
+import torchmetrics
 from torchmetrics.functional import f1, auroc
 from pytorch_lightning.loggers import WandbLogger
 from dataloaders.MIT_Temporal_dl import MITDataset, MITDataModule
@@ -17,6 +18,7 @@ from torch.nn import Transformer
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 from models.transformer import TransformerModel
 from callbacks.callbacks import TransformerEval
+#from callbacks.callbacks import TransformerEval
 
 
 # Dataloading
@@ -83,18 +85,20 @@ def get_params():
 
 def train():
     lr_monitor = LearningRateMonitor(logging_interval='epoch')
-    wandb_logger = WandbLogger(project="self-supervised-video", log_model='all')
-    transformer_callback = TransformerEval()
+    tr_eval = TransformerEval()
 
-    dm = MITDataModule("data/mit/mit_tensors_train_wc.pkl","data/mit/mit_tensors_train_wc.pkl", config)
+    wandb_logger = WandbLogger(project="self-supervised-video", log_model='all')
+    # transformer_callback = TransformerEval()
+
     # dm = MMXDataModule("data/mmx/mmx_tensors_val.pkl","data/mmx/mmx_tensors_val.pkl", config)
     # configuration
     params = get_params()
-    wandb.init(project="transformer-video", name="img", config=params)
+    wandb.init(project="transformer-video", name="MIT-location", config=params)
     config = wandb.config
+
+    dm = MITDataModule("data_processing/scene_temporal/mit_tensors_clean.pkl","data_processing/scene_temporal/mit_tensors_val.pkl", config)
     #dm = MMXDataModule("data_processing/trailer_temporal/mmx_tensors_train_3.pkl", "data_processing/trailer_temporal/mmx_tensors_val_3.pkl", config)
     #dm = MMXDataModule("data_processing/trailer_temporal/mmx_tensors_train_3.pkl", "data_processing/trailer_temporal/mmx_tens0ors_val_3.pkl", config)
-
     
     model = TransformerModel(config["ntokens"], config["emsize"], config["nhead"],
                              nhid = config["nhid"],
@@ -108,7 +112,7 @@ def train():
                              token_embedding = config["token_embedding"],
                              architecture = config["architecture"],
                              mixing = config["mixing_method"])
-    trainer = pl.Trainer(gpus=[config["device"]], callbacks=[lr_monitor, transformer_callback], max_epochs=config["epochs"], logger=wandb_logger)
+    trainer = pl.Trainer(gpus=[config["device"]], callbacks=[tr_eval], max_epochs=config["epochs"], logger=wandb_logger)
     trainer.fit(model, datamodule=dm)
 
 train()
