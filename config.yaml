@@ -1,6 +1,6 @@
 --- 
 # General params
-batch_size: 64
+batch_size: 10
 learning_rate: 0.005
 epochs: 800
 seq_len: 3

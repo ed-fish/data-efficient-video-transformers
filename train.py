@@ -1,5 +1,6 @@
 import confuse 
 import math
+import os
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
@@ -84,6 +85,9 @@ def get_params():
 ##### Training ####
 
 def train():
+    os.system("taskset -p 0xff %d" % os.getpid())
+
+
     lr_monitor = LearningRateMonitor(logging_interval='epoch')
     tr_eval = TransformerEval()
 

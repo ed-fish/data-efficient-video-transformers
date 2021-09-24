@@ -120,7 +120,7 @@ class MITDataModule(pl.LightningDataModule):
         print("length", len(data_frame))
 
         # TODO remove - 64 Bx2 testing only
-        # data_frame = data_frame.head(3000)
+        # data_frame = data_frame.head(000)
 
         return data_frame
 
@@ -140,10 +140,10 @@ class MITDataModule(pl.LightningDataModule):
 
     def train_dataloader(self):
         print("Loading train dataloader")
-        return DataLoader(MITDataset(self.train_data, self.config, train=True), self.bs, shuffle=True, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
+        return DataLoader(MITDataset(self.train_data, self.config, train=True), self.bs, shuffle=True, collate_fn=self.custom_collater, num_workers=20, drop_last=True, pin_memory=True)
 
     def val_dataloader(self):
-        return DataLoader(MITDataset(self.val_data, self.config, train=False), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
+        return DataLoader(MITDataset(self.val_data, self.config, train=False), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=20, drop_last=True, pin_memory=True)
     # For now use validation until proper test split obtained
     def test_dataloader(self):
         return DataLoader(MITDataset(self.train_data, self.config), 1, shuffle=False, collate_fn=self.custom_collater, num_workers=0)
