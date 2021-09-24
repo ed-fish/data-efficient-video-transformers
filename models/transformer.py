@@ -56,7 +56,7 @@ class CollaborativeGating(pl.LightningModule):
         batch_list = []
         for scenes in batch: # this will be batches
             scene_list = []
-            # first expert popped off
+             # first expert popped off
             for experts in scenes:
                 expert_attention_vec = []
                 for i in range(len(experts)):
@@ -87,7 +87,6 @@ class CollaborativeGating(pl.LightningModule):
         batch = torch.stack(batch_list, dim = 0)
         batch = batch.squeeze(2)
         return batch
-
 
 
 class GatedEmbeddingUnit(nn.Module):
@@ -153,6 +152,9 @@ class TransformerModel(pl.LightningModule):
         self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
         self.encoder = nn.Linear(ninp, ninp//2)
         self.decoder = nn.Linear(ninp//2, token_embedding)
+
+        post_encoder_layer = TransformerEncoderLayer(token_embedding, nhead, nhid, dropout)
+        self.post_transformer_encoder = TransformerEncoder(post_encoder_layer, nlayers)
         self.classifier = nn.Sequential(
                 nn.Linear(config["token_embedding"], config["hidden_layer"]),
                 nn.ReLU(),
@@ -163,6 +165,7 @@ class TransformerModel(pl.LightningModule):
                 nn.ReLU(),
                 nn.Dropout(p=dropout),
                 nn.Linear(config["output_shape"], ntoken))
+        
         self.classifier_2 = nn.Sequential(
                 nn.Linear(token_embedding * seq_len, token_embedding)
                 )
@@ -191,7 +194,6 @@ class TransformerModel(pl.LightningModule):
         collab_array = []
         for x in range(len(self.config["experts"])):
             d = data[x,:,:,:]
-           
             d = self.shared_step(d)
             collab_array.append(d)
         stacked_array = torch.stack(collab_array) # [expert, batch, dimension]
@@ -200,6 +202,34 @@ class TransformerModel(pl.LightningModule):
         data = self.cat_classifier(data)
         data = torch.sigmoid(data)
         return data
+
+    def post_transformer(self, data):
+        data = torch.stack(data)
+        data = data.transpose(0, 2)
+        collab_array = []
+        for x in range(len(self.config["experts"])):
+            d = data[x,:,:,:]
+            d = self.shared_step(d)
+            collab_array.append(d)
+        stacked_array = torch.stack(collab_array)
+        print("tras input", stacked_array.shape) # [expert, batch, dimension]
+        #stacked_array = stacked_array.transpose(0, 1)
+        src_mask = self.generate_square_subsequent_mask(stacked_array.size(0))
+        src_mask = src_mask.to(self.device)
+        data = self.post_transformer_encoder(stacked_array, src_mask)
+        print("transformer output", data.shape)
+        data = data.transpose(0, 1)
+        print("pre reshape", data.shape)
+        data = data.reshape(self.bs, -1)
+        print("after reshape", data.shape)
+        #output = self.decoder(data)
+
+        transform_t = self.cat_classifier(data)
+        pooled_result = transform_t.squeeze(0)
+        pooled_result = torch.sigmoid(pooled_result)
+
+        return pooled_result
+
 
     def pad(self, tensor):
         curr_expert = F.interpolate(tensor, size=2048)
@@ -281,7 +311,8 @@ class TransformerModel(pl.LightningModule):
         target = batch["label"]
 
         if self.config["mixing_method"] == "post_collab":
-            data = self.post_collab(data)
+            #data = self.post_collab(data)
+            data = self.post_transformer(data)
         else:
             data = self.shared_step(data)
         target = self.format_target(target)
@@ -302,13 +333,86 @@ class TransformerModel(pl.LightningModule):
         target = batch["label"]
 
         if self.config["mixing_method"] == "post_collab":
-            data = self.post_collab(data)
+            data = self.post_transformer(data)
         else:
             data = self.shared_step(data)
 
         target = self.format_target(target)
-
         target = target.float()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
         #target = torch.argmax(target, dim=-1)
         loss = self.criterion(data, target)
@@ -333,7 +437,7 @@ class TransformerModel(pl.LightningModule):
 
     def forward(self, src, src_mask):
         #src = self.encoder(src) * math.sqrt(self.hparams.ninp)
-        src_mask = self.generate_square_subsequent_mask(self.seq_len)
+        #src_mask = self.generate_square_subsequent_mask(self.seq_len)
         src = self.encoder(src)
         src = self.pos_encoder(src)
         src_mask = src_mask.to(self.device)

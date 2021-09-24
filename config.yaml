@@ -1,6 +1,6 @@
 --- 
 # General params
-batch_size: 10
+batch_size: 32
 learning_rate: 0.005
 epochs: 1000
 seq_len: 200
@@ -8,7 +8,7 @@ seq_len: 200
 # Optimisation
 dropout: 0.5
 momentum: 0.0005
-weight_decay: 0.0005
+weight_decay: 0.00005
 scheduling: True
 warm_up: 2
 #num_samples: 50000
@@ -20,7 +20,7 @@ token_embedding: 128
 hidden_layer: 2048
 projection_size: 512
 output_shape: 128
-gpu: 3
+gpu: 0
 
 # total, max, avg
 pooling: "none"
@@ -46,7 +46,7 @@ cat_softmax: False
 architecture: "post-trans"
 
 # Self supervised options
-device: 3
+device: 0
 # Method for pooling img, depth, and location embeddings.1
 # avg, max, random (select a random frame each time)
 aggregation: "none"
