@@ -22,9 +22,9 @@ gpu: 0
 
 # Data input
 # img = 2048, location = 2048, motion = 512, audio = 128
-experts: ["test-img-embeddings"]
-train_experts: ["img-embeddings"]
-test_experts: ["test-img-embeddings"]
+experts: ["test-location-embeddings"]
+train_experts: ["location-embeddings"]
+test_experts: ["test-location-embeddings"]
 # experts: ["location-embeddings", "img-embeddings", "video-embeddings", "audio-embeddings"]
 n_labels: 15
 input_shape: 2048 
