@@ -120,7 +120,7 @@ class MITDataModule(pl.LightningDataModule):
         print("length", len(data_frame))
 
         # TODO remove - 64 Bx2 testing only
-        # data_frame = data_frame.head(000)
+        # data_frame = data_frame.head(10000)
 
         return data_frame
 
@@ -132,18 +132,13 @@ class MITDataModule(pl.LightningDataModule):
 
         self.val_data = self.load_data(self.val_data)
         self.val_data = self.clean_data(self.val_data, train=False)
-        print(len(self.train_data))
-        print(len(self.val_data))
-        self.train_data = self.train_data.reset_index(drop=True)
-        self.val_data = self.val_data.reset_index(drop=True)
-        
 
     def train_dataloader(self):
         print("Loading train dataloader")
-        return DataLoader(MITDataset(self.train_data, self.config, train=True), self.bs, shuffle=True, collate_fn=self.custom_collater, num_workers=20, drop_last=True, pin_memory=True)
+        return DataLoader(MITDataset(self.train_data, self.config, train=True), self.bs, shuffle=True, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
 
     def val_dataloader(self):
-        return DataLoader(MITDataset(self.val_data, self.config, train=False), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=20, drop_last=True, pin_memory=True)
+        return DataLoader(MITDataset(self.val_data, self.config, train=False), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
     # For now use validation until proper test split obtained
     def test_dataloader(self):
         return DataLoader(MITDataset(self.train_data, self.config), 1, shuffle=False, collate_fn=self.custom_collater, num_workers=0)
@@ -155,7 +150,6 @@ class MITDataset(Dataset):
 
         self.config = config
         self.data_frame = data
-        print(self.data_frame.describe())
         self.aggregation = self.config["aggregation"]
         self.label_df = self.load_labels("/home/ed/self-supervised-video/data_processing/moments_categories.csv")
         self.train = train
@@ -190,7 +184,7 @@ class MITDataset(Dataset):
 
     def retrieve_tensors(self, path, expert):
         tensor_paths = self.return_expert_path(path, expert)
-        if expert == "test-img-embeddings" or expert == "location-embeddings":
+        if expert == "img-embeddings" or expert == "location-embeddings":
             tensor_paths = tensor_paths[0]
         if self.config["frame_agg"] == "none":
             t = self.load_tensor(tensor_paths)
@@ -211,69 +205,15 @@ class MITDataset(Dataset):
         data = self.data_frame.at[idx, "data"]
         path = self.data_frame.at[idx, "path"]
 
-        # x_i, x_j = random.sample(list(data.values()), 2)
         expert_list = []
 
-        ##################################
-
-        #for i, d in enumerate(data.values()):
-        #    #try:
-        #    if len(expert_list) < 3:
-        #        expert_tensor_list = []
-
-        #        # if there are multiple experts find out the mixing method
-        #        if len(self.config["experts"]) > 1:
-        #            if self.config["mixing_method"] == "none":
-        #                assert False, "Mixing method must be defined for multi modal experts"
-        #            for expert in self.config["experts"]:
-        #                expert_tensor_list.append(self.retrieve_tensors(d, expert)) # Retrieve the tensors for each expert.
-        #            if self.config["mixing_method"] == "concat":
-        #                cat_experts = torch.cat(expert_tensor_list, dim =-1) # concat experts for pre model
-        #                #expert_list.append(cat_experts)
-        #                if self.config["cat_norm"] == True:
-        #                    cat_experts = F.normalize(cat_experts, p=2, dim=-1)
-        #                if self.config["cat_softmax"] == True:
-        #                    cat_experts = F.softmax(cat_experts, dim=-1)
-        #                expert_list.append(cat_experts)
-        #            elif self.config["mixing_method"] == "collab":
-        #                expert_list.append(expert_tensor_list)
-        #        else: 
-        #            expert_list.append(self.retrieve_tensors(d, self.config["experts"][0])) # otherwise return one expert
-
-        #    # except KeyError:
-        #    #     continue
-        #    # except IndexError:
-        #    #     continue
-        #    # except IsADirectoryError:
-        #    #     continue
-        #if self.config["mixing_method"] == "collab":
-
-        #    while len(expert_list) < 3:
-        #        pad_list = []
-        #        for i in range(len(self.config["experts"])):
-        #            pad_list.append(torch.zeros_like(expert_list[0][0]))
-        #        expert_list.append(pad_list)
-        
-        #else:
-        #    while len(expert_list) < 3:
-        #        expert_list.append(torch.zeros_like(expert_list[0]))
-
-        #    expert_list = torch.cat(expert_list, dim=0)
-        #    expert_list = expert_list.unsqueeze(0)
-
-        #    label = torch.tensor([label])
-
-        #return {"label":label, "experts":expert_list}
-
-        ######################################
-
+        if self.train:
+            ex = "location-embeddings"
+        else:
+            ex = "test-location-embeddings"
 
         for i, d in enumerate(data.values()):
-            if i < 3:
-                if self.train:
-                    ex = "img-embeddings"
-                else:
-                    ex = "test-img-embeddings"
+            if len(expert_list) < 3:
                 expert_list.append(self.load_tensor(d[ex][0]))
 
         if len(expert_list) < 3:

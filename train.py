@@ -85,15 +85,12 @@ def get_params():
 ##### Training ####
 
 def train():
-    os.system("taskset -p 0xff %d" % os.getpid())
+    # os.system("taskset -p 0xff %d" % os.getpid())
 
-
-    lr_monitor = LearningRateMonitor(logging_interval='epoch')
+    torch.multiprocessing.set_sharing_strategy('file_system')
     tr_eval = TransformerEval()
-
     wandb_logger = WandbLogger(project="self-supervised-video", log_model='all')
     # transformer_callback = TransformerEval()
-
     # dm = MMXDataModule("data/mmx/mmx_tensors_val.pkl","data/mmx/mmx_tensors_val.pkl", config)
     # configuration
     params = get_params()

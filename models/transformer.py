@@ -143,7 +143,7 @@ class TransformerModel(pl.LightningModule):
         super(TransformerModel, self).__init__()
 
         self.criterion = nn.CrossEntropyLoss()
-        self.accuracy = torchmetrics.Accuracy(num_classes=305)
+        self.accuracy = torchmetrics.Accuracy()
         # self.criterion = nn.BCEWithLogitsLoss()
         self.seq_len = seq_len
         self.learning_rate = learning_rate
@@ -170,11 +170,7 @@ class TransformerModel(pl.LightningModule):
         if self.mixing== "collab" and self.architecture=="pre-trans":
             data = self.collab(data)
         else:
-            try:
-                data = torch.cat(data, dim=0)
-            except:
-                for d in data:
-                    print(d.shape)
+            data = torch.cat(data, dim=0)
 
         ##print("shared step 1:", data.shape)
 
