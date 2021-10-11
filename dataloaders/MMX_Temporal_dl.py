@@ -15,31 +15,31 @@ import pytorch_lightning as pl
 import json
 from sklearn.model_selection import train_test_split
 
+
 class MMXDataModule(pl.LightningDataModule):
 
-    def __init__(self, train_data,val_data, config):
+    def __init__(self, train_data, val_data, config):
         super().__init__()
         self.train_data = train_data
         self.val_data = val_data
         self.config = config
-        self.bs = self.config["batch_size"]
-        self.seq_len = self.config["seq_len"]
-
+        self.bs = config["batch_size"]
+        self.seq_len = config["seq_len"]
 
     def custom_collater(self, batch):
 
         return {
-                'label':[x['label'] for x in batch],
-                'experts':[x['experts'] for x in batch]
-                }
+            'label': [x['label'] for x in batch],
+            'experts': [x['experts'] for x in batch]
+        }
 
     # def prepare_data(self):
     #    data = self.load_data(self.pickle_file)
     #    self.data = self.clean_data(data)
 
     def clean_data(self, data_frame):
-        target_names = ['Action'  ,'Adventure'  ,'Comedy'  ,'Crime'  ,'Documentary'  ,'Drama'  ,'Family' , 'Fantasy'  ,'History'  ,'Horror'  ,'Music' , 'Mystery'  ,'Science Fiction' , 'Thriller',  'War']
-
+        target_names = ['Action', 'Adventure', 'Comedy', 'Crime', 'Documentary', 'Drama', 'Family',
+                        'Fantasy', 'History', 'Horror', 'Music', 'Mystery', 'Science Fiction', 'Thriller',  'War']
 
         print("cleaning data")
         print(data_frame.describe())
@@ -91,14 +91,14 @@ class MMXDataModule(pl.LightningDataModule):
         self.val_data = self.clean_data(self.val_data)
 
     def train_dataloader(self):
-        return DataLoader(MMXDataset(self.train_data, self.config), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=10, drop_last=True)
+        return DataLoader(MMXDataset(self.train_data, self.config), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
 
     def val_dataloader(self):
-        return DataLoader(MMXDataset(self.val_data, self.config), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=10, drop_last=True)
+        return DataLoader(MMXDataset(self.val_data, self.config), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
 
 # For now use validation until proper test split obtained
     def test_dataloader(self):
-        return DataLoader(MMXDataset(self.train_data, self.config), 1, shuffle=False, collate_fn=self.custom_collater, num_workers=10)
+        return DataLoader(MMXDataset(self.val_data, self.config), self.bs, shuffle=False, collate_fn=self.custom_collater, drop_last=True)
 
 
 class MMXDataset(Dataset):
@@ -115,7 +115,8 @@ class MMXDataset(Dataset):
 
     def collect_labels(self, label):
 
-        target_names = ['Action'  ,'Adventure'  ,'Comedy'  ,'Crime'  ,'Documentary'  ,'Drama'  ,'Family' , 'Fantasy'  ,'History'  ,'Horror'  ,'Music' , 'Mystery'  ,'Science Fiction' , 'Thriller',  'War']
+        target_names = ['Action', 'Adventure', 'Comedy', 'Crime', 'Documentary', 'Drama', 'Family',
+                        'Fantasy', 'History', 'Horror', 'Music', 'Mystery', 'Science Fiction', 'Thriller',  'War']
         label_list = np.zeros(15)
 
         for i, genre in enumerate(target_names):
@@ -147,18 +148,19 @@ class MMXDataset(Dataset):
             pool_list = [self.load_tensor(x) for x in tensor_paths]
             pool_list = torch.stack(pool_list, dim=-1)
             pool_list = pool_list.unsqueeze(0)
-            pooled_tensor = F.adaptive_avg_pool2d(pool_list, (1, self.config["input_shape"]), dim=-1)
+            pooled_tensor = F.adaptive_avg_pool2d(
+                pool_list, (1, self.config["input_shape"]), dim=-1)
             t = pooled_tensor.squeeze(0)
         if self.config["mixing_method"] == "post_collab":
             if t.shape[-1] != 2048:
-                t = nn.ConstantPad1d((0, 2048 - t.shape[-1]), 0)(t) # zero pad dimensions. 
+                # zero pad dimensions.
+                t = nn.ConstantPad1d((0, 2048 - t.shape[-1]), 0)(t)
         return t
-
 
     def __getitem__(self, idx):
 
         # retrieve labels
-        label =  self.data_frame.at[idx, "label"]
+        label = self.data_frame.at[idx, "label"]
         if len(label) == 2:
             # TODO fix labelling issue - hotfix here
             label = self.collect_labels(label[0])
@@ -180,25 +182,31 @@ class MMXDataset(Dataset):
                             assert False, "Mixing method must be defined for multi modal experts"
                         for expert in self.config["experts"]:
                             if self.config["mixing_method"] == "concat-norm":
-                                t = F.normalize(self.retrieve_tensors(d, expert), p=2, dim=-1)
+                                t = F.normalize(self.retrieve_tensors(
+                                    d, expert), p=2, dim=-1)
                             else:
                                 t = self.retrieve_tensors(d, expert)
-                            expert_tensor_list.append(t) # Retrieve the tensors for each expert.
+                            # Retrieve the tensors for each expert.
+                            expert_tensor_list.append(t)
                         if self.config["mixing_method"] == "concat":
-                            cat_experts = torch.cat(expert_tensor_list, dim =-1) # concat experts for pre model
-                            #expert_list.append(cat_experts)
+                            # concat experts for pre model
+                            cat_experts = torch.cat(expert_tensor_list, dim=-1)
+                            # expert_list.append(cat_experts)
                             if self.config["cat_norm"] == True:
-                                cat_experts = F.normalize(cat_experts, p=2, dim=-1)
+                                cat_experts = F.normalize(
+                                    cat_experts, p=2, dim=-1)
                             if self.config["cat_softmax"] == True:
                                 cat_experts = F.softmax(cat_experts, dim=-1)
                             expert_list.append(cat_experts)
                         elif self.config["mixing_method"] == "collab" or self.config["mixing_method"] == "post_collab":
                             expert_list.append(torch.stack(expert_tensor_list))
                     else:
-                        expert_list.append(self.retrieve_tensors(d, self.config["experts"][0])) # otherwise return one expert
+                        # otherwise return one expert
+                        expert_list.append(self.retrieve_tensors(
+                            d, self.config["experts"][0]))
             except KeyError:
                 print("key error")
-                #continue
+                # continue
             except IndexError:
                 continue
             except IsADirectoryError:
@@ -216,15 +224,13 @@ class MMXDataset(Dataset):
             while len(expert_list) < self.seq_len:
                 expert_list.append(torch.zeros_like(expert_list[0]))
 
-            expert_list = torch.cat(expert_list, dim=0) # scenes 
+            expert_list = torch.cat(expert_list, dim=0)  # scenes
             expert_list = expert_list.unsqueeze(0)
-        
 
-        return {"label":label, "experts":expert_list}
-
+        return {"label": label, "experts": expert_list}
 
     # for each scene retrieve all the embeddings
-    # config["expert"] needs to change to a list so we can mix and match. 
+    # config["expert"] needs to change to a list so we can mix and match.
 
     # for expert in experts: cat (load expert 1, loade expert .., n)
     # check same dimension with assert
@@ -265,5 +271,3 @@ class MMXDataset(Dataset):
     # expert_list = expert_list.unsqueeze(0)
 
     # return {"label":label, "experts":expert_list}
-
-

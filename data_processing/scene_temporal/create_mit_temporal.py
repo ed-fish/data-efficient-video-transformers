@@ -66,12 +66,12 @@ def mp_handler():
     data_list = []
     count = 0
 
-    squish_folders("/mnt/fvpbignas/datasets/moments_in_time/Moments_in_Time_Aug/training")
+    squish_folders("/mnt/bigelow/scratch/mit_no_crop/training")
     with open("mit_train_cache.pkl", 'rb') as cache:
         data = pickle.load(cache)
         random.shuffle(data)
 
-    with open("mit_tensors_train.pkl", 'ab') as pkly:
+    with open("mit_train_final.pkl", 'ab') as pkly:
         for result in p.imap(create_dictionary, tqdm.tqdm(data, total=len(data))):
             if result:
                 pickle.dump(result, pkly)
