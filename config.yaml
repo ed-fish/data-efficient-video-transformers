@@ -1,4 +1,3 @@
---- 
 # General params
 batch_size: 10
 learning_rate: 0.005
@@ -16,11 +15,18 @@ warm_up: 2
 # Architecure optimisation
 
 input_shape: 2048
+ninp: 2048
+nhead: 2
 token_embedding: 1024
+ntoken: 15
 hidden_layer: 2048
-projection_size: 512
+mixing: "post-collab"
+encoder_layers: 2048
+nlayers: 2
+nhid: 1850
+projection_size: 15
 output_shape: 128
-gpu: 3
+gpu: 1
 
 # total, max, avg
 pooling: "none"
@@ -40,6 +46,7 @@ frame_id: 0
 
 # Multi modal settings
 mixing_method: "post_collab"
+mixing: "post_collab"
 cat_norm: False
 cat_softmax: False
 
@@ -47,7 +54,7 @@ cat_softmax: False
 architecture: "post-trans"
 
 # Self supervised options
-device: 3
+device: 1
 # Method for pooling img, depth, and location embeddings.1
 # avg, max, random (select a random frame each time)
 aggregation: "none"

@@ -17,7 +17,7 @@ from sklearn.model_selection import train_test_split
 
 class MITDataModule(pl.LightningDataModule):
 
-    def __init__(self, train_data,val_data, config):
+    def __init__(self, train_data, val_data, config):
         super().__init__()
         self.train_data = train_data
         self.val_data = val_data
@@ -27,10 +27,10 @@ class MITDataModule(pl.LightningDataModule):
     def custom_collater(self, batch):
 
         return {
-                'label':[x['label'] for x in batch],
-                'experts':[x['expert_list'] for x in batch],
-                'path':[x['path'] for x in batch]
-                }
+            'label': [x['label'] for x in batch],
+            'experts': [x['expert_list'] for x in batch],
+            'path': [x['path'] for x in batch]
+        }
 
     # def prepare_data(self):
     #    data = self.load_data(self.pickle_file)
@@ -40,7 +40,7 @@ class MITDataModule(pl.LightningDataModule):
 
         print("cleaning data")
         print(len(data_frame))
-        for i in range(len(data_frame)): 
+        for i in range(len(data_frame)):
 
             data = data_frame.at[i, "data"]
             drop = False
@@ -69,24 +69,24 @@ class MITDataModule(pl.LightningDataModule):
 
                 # test = []
                 # for f in data[1]: # data1 == img_embeddings, data2 == motion?, data0=location
-                 #   print(f)
-                 #   f = torch.load(f)
-                  #  f = f.squeeze()
-                   # test.append(f)
-                    # print(f.dim)
-                    # if f.dim() > 0:
-                    #    test.append(f)
-                    #else:
-                    #    data_frame = data_frame.drop(i)
-                    #    continue
+                #   print(f)
+                #   f = torch.load(f)
+                #  f = f.squeeze()
+                # test.append(f)
+                # print(f.dim)
+                # if f.dim() > 0:
+                #    test.append(f)
+                # else:
+                #    data_frame = data_frame.drop(i)
+                #    continue
                 # try:
                 #    test = torch.cat(test, dim=-1)
                 # except:
                 #    data_frame = data_frame.drop(i)
                 #    print("dropping", i)
                 #    continue
-                #print(test.shape[0])
-                #if test.shape[0] != 2560:
+                # print(test.shape[0])
+                # if test.shape[0] != 2560:
                 #    print("dropping", i)
                 #    data_frame = data_frame.drop(i)
                 #    continue
@@ -122,7 +122,7 @@ class MITDataModule(pl.LightningDataModule):
 
         self.train_data = self.load_data(self.train_data)
         self.train_data = self.clean_data(self.train_data)
-        
+
         self.val_data = self.load_data(self.val_data)
         self.val_data = self.clean_data(self.val_data)
 
@@ -133,6 +133,7 @@ class MITDataModule(pl.LightningDataModule):
     def val_dataloader(self):
         return DataLoader(MITDataset(self.val_data, self.config), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
     # For now use validation until proper test split obtained
+
     def test_dataloader(self):
         return DataLoader(MITDataset(self.train_data, self.config), 1, shuffle=False, collate_fn=self.custom_collater, num_workers=0)
 
@@ -145,11 +146,12 @@ class MITDataset(Dataset):
         self.data_frame = data
         print(self.data_frame)
         self.aggregation = self.config["aggregation"]
-        self.label_df = self.load_labels("/home/ed/self-supervised-video/data_processing/moments_categories.csv")
+        self.label_df = self.load_labels(
+            "/home/ed/self-supervised-video/data_processing/moments_categories.csv")
 
     def __len__(self):
         return len(self.data_frame)
-    
+
     def collect_one_hot_labels(self, label):
         label_array = np.zeros(305)
         index = self.label_df.loc[label]["id"]
@@ -174,7 +176,7 @@ class MITDataset(Dataset):
 
     def __getitem__(self, idx):
 
-        label =  self.data_frame.at[idx, "label"]
+        label = self.data_frame.at[idx, "label"]
         label = self.collect_labels(label)
         data = self.data_frame.at[idx, "data"]
         path = self.data_frame.at[idx, "path"]
@@ -189,12 +191,12 @@ class MITDataset(Dataset):
         expert_list = expert_list.unsqueeze(0)
         label = torch.tensor([label])
 
-        #for index, i in enumerate(x_i):
+        # for index, i in enumerate(x_i):
         #    print(i)
         #    t = torch.load(i)
         #    experts_xi.append(t.squeeze())
-        
-        #for index, i in enumerate(x_j):
+
+        # for index, i in enumerate(x_j):
         #    print(i)
         #    t = torch.load(i)
         #    experts_xj.append(t.squeeze())
@@ -203,6 +205,4 @@ class MITDataset(Dataset):
             experts_xi = torch.cat(experts_xi, dim=-1)
             experts_xj = torch.cat(experts_xj, dim=-1)
 
-        return {"label":label, "path":path, "expert_list":expert_list}
-
-
+        return {"label": label, "path": path, "expert_list": expert_list}

@@ -30,7 +30,8 @@ class MMXDataModule(pl.LightningDataModule):
 
         return {
             'label': [x['label'] for x in batch],
-            'experts': [x['experts'] for x in batch]
+            'experts': [x['experts'] for x in batch],
+            'path': [x["path"] for x in batch]
         }
 
     # def prepare_data(self):
@@ -161,6 +162,7 @@ class MMXDataset(Dataset):
 
         # retrieve labels
         label = self.data_frame.at[idx, "label"]
+        path = self.data_frame.at[idx, "path"]
         if len(label) == 2:
             # TODO fix labelling issue - hotfix here
             label = self.collect_labels(label[0])
@@ -227,7 +229,7 @@ class MMXDataset(Dataset):
             expert_list = torch.cat(expert_list, dim=0)  # scenes
             expert_list = expert_list.unsqueeze(0)
 
-        return {"label": label, "experts": expert_list}
+        return {"label": label, "path": path, "experts": expert_list}
 
     # for each scene retrieve all the embeddings
     # config["expert"] needs to change to a list so we can mix and match.

@@ -106,7 +106,7 @@ class GatedEmbeddingUnit(nn.Module):
 
     def forward(self, x):
         x = self.fc(x)
-        #x = self.cg(x)
+        # x = self.cg(x)
         x = F.normalize(x)
         return x
 
@@ -131,75 +131,61 @@ class ContextGating(nn.Module):
 class TransformerModel(pl.LightningModule):
 
     def __init__(self,
-                 config,
-                 ntoken,
-                 ninp,
-                 nhead=4,
-                 nhid=2048,
-                 nlayers=4,
-                 batch_size=32,
-                 learning_rate=0.05,
-                 dropout=0.5,
-                 warmup_epochs=10,
-                 max_epochs=100,
-                 seq_len=5,
-                 momentum=0,
-                 weight_decay=0,
-                 scheduling=False,
-                 token_embedding=15,
-                 architecture=None,
-                 mixing=None,
+                 **kwargs
                  ):
         super(TransformerModel, self).__init__()
 
+        self.save_hyperparameters()
+
         # self.criterion = nn.CrossEntropyLoss()
         self.criterion = nn.BCELoss()
-        self.seq_len = seq_len
-        self.learning_rate = learning_rate
         # shared dropout value for pe and tm(el)
         self.pos_encoder = PositionalEncoding(
-            ninp//2, dropout, max_len=seq_len)
-        encoder_layers = TransformerEncoderLayer(ninp//2, nhead, nhid, dropout)
-        self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
-        self.encoder = nn.Linear(ninp, ninp//2)
-        self.decoder = nn.Linear(ninp//2, token_embedding)
+            self.hparams.ninp//2, self.hparams.dropout, max_len=self.hparams.seq_len)
+        encoder_layers = TransformerEncoderLayer(
+            self.hparams.ninp//2, self.hparams.nhead, self.hparams.nhid, self.hparams.dropout)
+        self.transformer_encoder = TransformerEncoder(
+            encoder_layers, self.hparams.nlayers)
+        self.encoder = nn.Linear(self.hparams.ninp, self.hparams.ninp//2)
+        self.decoder = nn.Linear(self.hparams.ninp//2,
+                                 self.hparams.token_embedding)
         self.testdict = {}
 
         post_encoder_layer = TransformerEncoderLayer(
-            token_embedding, nhead, nhid, dropout)
+            self.hparams.token_embedding, self.hparams.nhead, self.hparams.nhid, self.hparams.dropout)
         self.post_transformer_encoder = TransformerEncoder(
-            post_encoder_layer, nlayers)
+            post_encoder_layer, self.hparams.nlayers)
         self.classifier = nn.Sequential(
-            nn.Linear(config["token_embedding"], config["hidden_layer"]),
+            nn.Linear(self.hparams.token_embedding, self.hparams.hidden_layer),
             nn.ReLU(),
-            nn.Linear(config["hidden_layer"], config["hidden_layer"]),
+            nn.Linear(self.hparams.hidden_layer, self.hparams.hidden_layer),
             nn.ReLU(),
-            nn.Dropout(p=dropout),
-            nn.Linear(config["hidden_layer"], config["output_shape"]),
+            nn.Dropout(p=self.hparams.dropout),
+            nn.Linear(self.hparams.hidden_layer, self.hparams.output_shape),
             nn.ReLU(),
-            nn.Dropout(p=dropout),
-            nn.Linear(config["output_shape"], ntoken))
+            nn.Dropout(p=self.hparams.dropout),
+            nn.Linear(self.hparams.output_shape, self.hparams.token_embedding))
 
         self.classifier_2 = nn.Sequential(
-            nn.Linear(token_embedding * seq_len, token_embedding)
+            nn.Linear(self.hparams.token_embedding *
+                      self.hparams.seq_len, self.hparams.token_embedding)
         )
 
         self.cat_classifier = nn.Sequential(
-            nn.Linear(token_embedding * len(config["experts"]), ntoken)
-        )
+            nn.Linear(self.hparams.token_embedding * len(self.hparams.experts), self.hparams.ntoken))
 
-        self.mixing = mixing
-        self.architecture = architecture
         self.collab = CollaborativeGating()
-        self.bs = batch_size
         self.init_weights()
+        self.running_embeds = []
         self.running_labels = []
         self.running_logits = []
-        self.config = config
+        self.running_paths = []
+        self.test_dict = {}
+        self.save_hyperparameters()
 
     def configure_optimizers(self):
-        optimizer = torch.optim.SGD(self.parameters(), lr=self.learning_rate,
-                                    momentum=self.config["momentum"], weight_decay=self.config["weight_decay"])
+        optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.learning_rate,
+                                    momentum=self.hparams.momentum, weight_decay=self.hparams.weight_decay)
         return optimizer
 
     def post_collab(self, data):
@@ -207,7 +193,7 @@ class TransformerModel(pl.LightningModule):
         data = torch.stack(data)
         data = data.transpose(0, 2)
         collab_array = []
-        for x in range(len(self.config["experts"])):
+        for x in range(len(self.hparams.experts)):
             d = data[x, :, :, :]
             d = self.shared_step(d)
             collab_array.append(d)
@@ -222,23 +208,20 @@ class TransformerModel(pl.LightningModule):
         data = torch.stack(data)
         data = data.transpose(0, 2)
         collab_array = []
-        for x in range(len(self.config["experts"])):
+        for x in range(len(self.hparams.experts)):
             d = data[x, :, :, :]
             d = self.shared_step(d)
             collab_array.append(d)
         stacked_array = torch.stack(collab_array)
-        #stacked_array = self.pos_encoder(stacked_array)
-        print("tras input", stacked_array.shape)  # [expert, batch, dimension]
-        #stacked_array = stacked_array.transpose(0, 1)
+        # stacked_array = self.pos_encoder(stacked_array)
+        # stacked_array = stacked_array.transpose(0, 1)
         src_mask = self.generate_square_subsequent_mask(stacked_array.size(0))
         src_mask = src_mask.to(self.device)
         data = self.post_transformer_encoder(stacked_array, src_mask)
-        print("transformer output", data.shape)
         data = data.transpose(0, 1)
-        print("pre reshape", data.shape)
-        data = data.reshape(self.bs, -1)
-        print("after reshape", data.shape)
-        #output = self.decoder(data)
+        data = data.reshape(self.hparams.batch_size, -1)
+        self.running_embeds.append(data)
+        # output = self.decoder(data)
 
         transform_t = self.cat_classifier(data)
         pooled_result = transform_t.squeeze(0)
@@ -257,9 +240,9 @@ class TransformerModel(pl.LightningModule):
 
     def shared_step(self, data):
         # flatten or mix output embeddings
-        if self.mixing == "collab" and self.architecture == "pre-trans":
+        if self.hparams.mixing == "collab" and self.architecture == "pre-trans":
             data = self.collab(data)
-        elif self.mixing == "post_collab":
+        elif self.hparams.mixing == "post_collab":
             data = data
         else:
             data = torch.cat(data, dim=0)
@@ -268,7 +251,7 @@ class TransformerModel(pl.LightningModule):
         #     data = self.pad(data)
         # reshape for transformer output (B, S, E) -> (S, B, E)
 
-        if not self.mixing == "post_collab":
+        if not self.hparams.mixing == "post_collab":
             data = data.permute(1, 0, 2)
         src_mask = self.generate_square_subsequent_mask(data.size(0))
         src_mask = src_mask.to(self.device)
@@ -277,35 +260,35 @@ class TransformerModel(pl.LightningModule):
 
         # FORWARD
         output = self(data, src_mask)
-        ##print("output step 1:", output.shape)
+        # print("output step 1:", output.shape)
 
         # reshape back to original (S, B, E) -> (B, S, E)
         transform_t = output.permute(1, 0, 2)
 
-        #print("output_reshape", output.shape)
+        # print("output_reshape", output.shape)
 
         # flatten sequence embeddings (S, B, E) -> (B, S * E)
-        transform_t = transform_t.reshape(self.bs, -1)
+        transform_t = transform_t.reshape(self.hparams.batch_size, -1)
 
-        #print("output_reshape 2", output.shape)
+        # print("output_reshape 2", output.shape)
         transform_t = transform_t.unsqueeze(0)
 
         # Pooling before classification?
-        if self.config["pooling"] == "avg":
+        if self.hparams.pooling == "avg":
             transform_t = F.adaptive_avg_pool1d(
-                transform_t, self.config["token_embedding"])
+                transform_t, self.hparams.token_embedding)
             transform_t = transform_t.squeeze(0)
             pooled_result = self.classifier(transform_t)
-        elif self.config["pooling"] == "max":
+        elif self.hparams.pooling == "max":
             transform_t = F.adaptive_max_pool1d(
-                transform_t, self.config["token_embedding"])
+                transform_t, self.hparams.token_embedding)
             transform_t = transform_t.squeeze(0)
             pooled_result = self.classifier(transform_t)
-        elif self.config["pooling"] == "total":
+        elif self.hparams.pooling == "total":
             transform_t = F.adaptive_max_pool1d(
-                transform_t, self.config["ntokens"])
+                transform_t, self.hparams.ntoken)
             pooled_result = transform_t.squeeze(0)
-        elif self.config["pooling"] == "none":
+        elif self.hparams.pooling == "none":
             transform_t = self.classifier_2(transform_t)
             pooled_result = transform_t.squeeze(0)
             pooled_result = torch.sigmoid(pooled_result)
@@ -328,8 +311,8 @@ class TransformerModel(pl.LightningModule):
         data = batch["experts"]
         target = batch["label"]
 
-        if self.config["mixing_method"] == "post_collab":
-            #data = self.post_collab(data)
+        if self.hparams.mixing_method == "post_collab":
+            # data = self.post_collab(data)
             data = self.post_transformer(data)
         else:
             data = self.shared_step(data)
@@ -338,7 +321,7 @@ class TransformerModel(pl.LightningModule):
 
         loss = self.criterion(data, target)
         self.log("train/loss", loss, on_step=True, on_epoch=True)
-        #acc_preds = self.preds_acc(data)
+        # acc_preds = self.preds_acc(data)
 
         # gradient clipping for stability
         # torch.nn.utils.clip_grad_norm(self.parameters(), 0.5)
@@ -350,7 +333,7 @@ class TransformerModel(pl.LightningModule):
         data = batch["experts"]
         target = batch["label"]
 
-        if self.config["mixing_method"] == "post_collab":
+        if self.hparams.mixing_method == "post_collab":
             data = self.post_transformer(data)
         else:
             data = self.shared_step(data)
@@ -358,7 +341,7 @@ class TransformerModel(pl.LightningModule):
         target = self.format_target(target)
         target = target.float()
 
-        #target = torch.argmax(target, dim=-1)
+        # target = torch.argmax(target, dim=-1)
         loss = self.criterion(data, target)
 
         # acc_preds = self.preds_acc(data)
@@ -371,8 +354,9 @@ class TransformerModel(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         data = batch["experts"]
         target = batch["label"]
+        path = batch["path"]
 
-        if self.config["mixing_method"] == "post_collab":
+        if self.hparams.mixing_method == "post_collab":
             data = self.post_transformer(data)
         else:
             data = self.shared_step(data)
@@ -380,12 +364,16 @@ class TransformerModel(pl.LightningModule):
         target = self.format_target(target)
         target = target.float()
 
-        #target = torch.argmax(target, dim=-1)
+        # target = torch.argmax(target, dim=-1)
         loss = self.criterion(data, target)
 
+        self.running_paths.append(path)
+        self.running_labels.append(target)
+        self.running_logits.append(data)
+
         # acc_preds = self.preds_acc(data)
-        self.test_dict[batch_idx]["predicted"] = data
-        self.test_dict[batch_idx]["actual"] = target
+        # id = {"predicted": data, "actual": target}
+        # self.test_dict[str(batch_idx)] = id
 
         self.log("val/loss", loss, on_step=True, on_epoch=True)
         return loss
@@ -403,8 +391,8 @@ class TransformerModel(pl.LightningModule):
         self.decoder.weight.data.uniform_(-initrange, initrange)
 
     def forward(self, src, src_mask):
-        #src = self.encoder(src) * math.sqrt(self.hparams.ninp)
-        #src_mask = self.generate_square_subsequent_mask(self.seq_len)
+        # src = self.encoder(src) * math.sqrt(self.hparams.ninp)
+        # src_mask = self.generate_square_subsequent_mask(self.seq_len)
         src = self.encoder(src)
         src = self.pos_encoder(src)
         src_mask = src_mask.to(self.device)
