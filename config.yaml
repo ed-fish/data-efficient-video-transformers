@@ -1,12 +1,12 @@
 # General params
 batch_size: 10
-learning_rate: 0.005
+learning_rate: 0.05
 epochs: 500
-seq_len: 200
+seq_len: 150
 
 # Optimisation
 dropout: 0.5
-momentum: 0.0005
+momentum: 0.00005
 weight_decay: 0.00005
 scheduling: True
 warm_up: 2
@@ -26,7 +26,7 @@ nlayers: 2
 nhid: 1850
 projection_size: 15
 output_shape: 128
-gpu: 1
+gpu: 2 
 
 # total, max, avg
 pooling: "none"
@@ -34,15 +34,17 @@ pooling: "none"
 # Data input
 # img = 2048, location = 2048, motion = 512, audio = 128, all=4736
 
-experts: ["test-video-embeddings", "test-location-embeddings", "test-img-embeddings", "audio-embeddings"]
+#experts: ["test-video-embeddings", "test-location-embeddings", "test-img-embeddings", "audio-embeddings"]
+experts: ["test-img-embeddings", "test-location-embeddings", "test-video-embeddings"]
 train_experts: ["img-embeddings"]
 test_experts: ["test-img-embeddings"]
 # experts: ["location-embeddings", "img-embeddings", "video-embeddings", "audio-embeddings"]
 n_labels: 15
-n_heads: 4
+n_heads: 2
 # pool or None
 frame_agg: "none"
 frame_id: 0
+cls: 0
 
 # Multi modal settings
 mixing_method: "post_collab"
@@ -54,9 +56,8 @@ cat_softmax: False
 architecture: "post-trans"
 
 # Self supervised options
-device: 1
+device: 2
 # Method for pooling img, depth, and location embeddings.1
 # avg, max, random (select a random frame each time)
 aggregation: "none"
-
 save_path: "/trained_models/mmx/transformer/"

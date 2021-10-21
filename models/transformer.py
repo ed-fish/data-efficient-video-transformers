@@ -173,6 +173,7 @@ class TransformerModel(pl.LightningModule):
 
         self.cat_classifier = nn.Sequential(
             nn.Linear(self.hparams.token_embedding * len(self.hparams.experts), self.hparams.ntoken))
+        self.norm = nn.LayerNorm(self.hparams.ninp//2)
 
         self.collab = CollaborativeGating()
         self.init_weights()
@@ -198,7 +199,10 @@ class TransformerModel(pl.LightningModule):
             d = self.shared_step(d)
             collab_array.append(d)
         stacked_array = torch.stack(collab_array)  # [expert, batch, dimension]
-        stacked_array = stacked_array.transpose(0, 1)
+        print("stacked array shape", stacked_array.shape)
+        if not self.hparams.cls:
+            stacked_array = stacked_array.transpose(0, 1)
+        data = stacked_array[0]
         data = torch.flatten(stacked_array, 1, -1)
         data = self.cat_classifier(data)
         data = torch.sigmoid(data)
@@ -245,6 +249,8 @@ class TransformerModel(pl.LightningModule):
         elif self.hparams.mixing == "post_collab":
             data = data
         else:
+            if self.hparams.cls:
+                data.insert(0, torch.zeros_like(data[0]))
             data = torch.cat(data, dim=0)
 
         # if data.shape[-1] != 2048:
@@ -261,6 +267,9 @@ class TransformerModel(pl.LightningModule):
         # FORWARD
         output = self(data, src_mask)
         # print("output step 1:", output.shape)
+
+        if self.hparams.cls:
+            return output[0]  # just return cls token
 
         # reshape back to original (S, B, E) -> (B, S, E)
         transform_t = output.permute(1, 0, 2)
@@ -395,6 +404,7 @@ class TransformerModel(pl.LightningModule):
         # src_mask = self.generate_square_subsequent_mask(self.seq_len)
         src = self.encoder(src)
         src = self.pos_encoder(src)
+        src = self.norm(src)
         src_mask = src_mask.to(self.device)
         output = self.transformer_encoder(src, src_mask)
         output = self.decoder(output)
