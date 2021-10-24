@@ -20,7 +20,6 @@ gpu: 1
 
 pooling: "none"
 
-
 experts: ["test-video-embeddings", "test-location-embeddings", "test-img-embeddings", "audio-embeddings"]
 train_experts: ["img-embeddings"]
 test_experts: ["test-img-embeddings"]
@@ -29,7 +28,7 @@ n_heads: 4
 frame_agg: "none"
 frame_id: 0
 
-mixing_method: "post_collab"
+mixing_method: "none"
 cat_norm: False
 cat_softmax: False
 

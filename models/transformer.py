@@ -5,18 +5,10 @@ import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchmetrics
-import wandb
-from torchmetrics.functional import f1, auroc
-from pytorch_lightning.loggers import WandbLogger
-from dataloaders.MIT_Temporal_dl import MITDataset, MITDataModule
-from models.contrastivemodel import SpatioTemporalContrastiveModel
-from dataloaders.MMX_Temporal_dl import MMXDataset, MMXDataModule
-from pytorch_lightning.callbacks import LearningRateMonitor
-from pl_bolts.optimizers.lr_scheduler import LinearWarmupCosineAnnealingLR
-from torch.nn import Transformer
-from torch.nn import TransformerEncoder, TransformerEncoderLayer
-from callbacks.callbacks import TransformerEval
+from torch.nn import TransformerEncoder, TransformerEncoderLayer, TransformerDecoderLayer, TransformerDecoder
+from torch.nn.modules import loss
+from einops import reduce, rearrange
+from torch.nn.modules.activation import ReLU
 
 
 class PositionalEncoding(pl.LightningModule):
@@ -31,101 +23,105 @@ class PositionalEncoding(pl.LightningModule):
         pe[:, 1::2] = torch.cos(position * div_term)
         pe = pe.unsqueeze(0).transpose(0, 1)
         self.register_buffer('pe', pe)
-        self.mean = 0.06
-        self.std = 0.2
 
     def forward(self, x):
-        # x = (x - self.mean) / self.std
         x = x + self.pe[:x.size(0), :]
         return self.dropout(x)
 
 
-class CollaborativeGating(pl.LightningModule):
-    def __init__(self):
-        super(CollaborativeGating, self).__init__()
-        self.proj_input = 2048
-        self.proj_embedding_size = 2048
-        self.projection = nn.Linear(self.proj_input, self.proj_embedding_size)
-        self.cg = ContextGating(self.proj_input)
-        self.geu = GatedEmbeddingUnit(self.proj_input, 1024,  False)
+class SimpleTransformer(pl.LightningModule):
+    def __init__(self, **kwargs):
+        super(SimpleTransformer, self).__init__()
 
-    def pad(self, tensor):
-        tensor = tensor.unsqueeze(0)
-        curr_expert = F.interpolate(tensor, 2048)
-        curr_expert = curr_expert.squeeze(0)
-        return curr_expert
+        self.save_hyperparameters()
+        self.expert_encoder = nn.Sequential(
+            nn.Linear(self.hparams.input_dimension,
+                      self.hparams.input_dimension//2),
+        )
+        self.criterion = nn.BCELoss()
+        self.position_encoder = PositionalEncoding(
+            self.hparams.input_dimension//2, self.hparams.dropout, max_len=self.hparams.seq_len)
+        self.encoder_layers = TransformerEncoderLayer(
+            self.hparams.input_dimension//2, self.hparams.nhead, self.hparams.nhid, self.hparams.dropout)
+        self.transformer_encoder = TransformerEncoder(
+            self.encoder_layers, self.hparams.nlayers)
+        self.norm = nn.LayerNorm(self.hparams.input_dimension//2)
+        # self.cls_token = nn.Parameter(
+        #     torch.randn(1, 1, self.hparams.input_dimension))
+        self.running_labels = []
+        self.running_logits = []
+        self.classifier = nn.Sequential(
+            nn.Linear(self.hparams.input_dimension//2 * self.hparams.seq_len,
+                      self.hparams.input_dimension//2),
+            nn.ReLU(),
+            nn.Linear(self.hparams.input_dimension//2,
+                      self.hparams.input_dimension // 4),
+            nn.ReLU(),
+            nn.Linear(self.hparams.input_dimension //
+                      4, self.hparams.n_classes),
+        )
 
-    def forward(self, batch):
-        batch_list = []
-        for scenes in batch:  # this will be batches
-            scene_list = []
-            # first expert popped off
-            for experts in scenes:
-                expert_attention_vec = []
-                for i in range(len(experts)):
-                    curr_expert = experts.pop(0)
-                    if curr_expert.shape[1] != 2048:
-                        curr_expert = self.pad(curr_expert)
+    def configure_optimizers(self):
+        optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.learning_rate,
+                                    momentum=self.hparams.momentum, weight_decay=self.hparams.weight_decay)
+        return optimizer
 
-                    # compare with all other experts
-                    curr_expert = self.projection(curr_expert)
-                    t_i_list = []
-                    for c_expert in experts:
-                        # through g0 to get feature embedding t_i
-                        if c_expert.shape[1] != 2048:
-                            c_expert = self.pad(c_expert)
-                        c_expert = self.projection(c_expert)
-                        t_i = curr_expert + c_expert  # t_i maps y1 to y2
-                        t_i_list.append(t_i)
-                    t_i_summed = torch.stack(t_i_list, dim=0).sum(
-                        dim=0)  # all other features
-                    # attention vector for all comparrisons
-                    expert_attention = self.projection(t_i_summed)
-                    expert_attention_comp = self.cg(
-                        curr_expert, expert_attention)  # gated version
-                    expert_attention_vec.append(expert_attention_comp)
-                    experts.append(curr_expert)
-                expert_attention_vec = torch.stack(expert_attention_vec, dim=0).sum(
-                    dim=0)  # concat all attention vectors
-                # apply gated embedding
-                expert_vector = self.geu(expert_attention_vec)
-                scene_list.append(expert_vector)
-            scene_stack = torch.stack(scene_list)
-            batch_list.append(scene_stack)
-        batch = torch.stack(batch_list, dim=0)
-        batch = batch.squeeze(2)
-        return batch
+    def forward(self, src):
+        src = self.expert_encoder(src)
+        src = src * math.sqrt(self.hparams.input_dimension//2)
+        src = self.position_encoder(src)
+        # src = self.norm(src)
+        output = self.transformer_encoder(src)
+        return output
 
+    def training_step(self, batch, batch_idx):
 
-class GatedEmbeddingUnit(nn.Module):
-    def __init__(self, input_dimension, output_dimension, use_bn):
-        super(GatedEmbeddingUnit, self).__init__()
+        data = batch["experts"]
+        target = batch["label"]
+        data = self.shared_step(data)
+        target = self.format_target(target)
+        target = target.float()
+        loss = self.criterion(data, target)
+        self.log("train/loss", loss, on_step=True, on_epoch=True)
 
-        self.fc = nn.Linear(input_dimension, output_dimension)
-        # self.cg = ContextGating(output_dimension, add_batch_norm=use_bn)
+        return loss
 
-    def forward(self, x):
-        x = self.fc(x)
-        # x = self.cg(x)
-        x = F.normalize(x)
-        return x
+    def validation_step(self, batch, batch_idx):
 
+        data = batch["experts"]
+        target = batch["label"]
+        data = self.shared_step(data)
+        target = self.format_target(target)
+        target = target.float()
+        # target = torch.argmax(target, dim=-1)
+        loss = self.criterion(data, target)
+        # acc_preds = self.preds_acc(data)
+        self.running_labels.append(target)
+        self.running_logits.append(data)
+        self.log("val/loss", loss, on_step=True, on_epoch=True)
 
-class ContextGating(nn.Module):
-    def __init__(self, dimension, add_batch_norm=True):
-        super(ContextGating, self).__init__()
-        # self.add_batch_norm = add_batch_norm
-        # self.batch_norm = nn.BatchNorm1d(dimension)
-        # self.batch_norm2 = nn.BatchNorm1d(dimension)
+        return loss
 
-    def forward(self, x, x1):
+    def shared_step(self, data):
+        data = torch.stack(data)
+        # data = torch.cat(data, dim=0)
+        data = rearrange(data, 'b s e -> s b e')
+        # FORWARD
+        output = self(data)
+        # print("output step 1:", output.shape)
 
-        # if self.add_batch_norm:
-        #     x = self.batch_norm(x)
-        #     x1 = self.batch_norm2(x1)
-        t = x + x1
-        x = torch.cat((x, t), -1)
-        return F.glu(x, -1)
+        # reshape back to original (S, B, E) -> (B, S, E)
+        output = rearrange(output, 's b e -> b s e')
+        output = rearrange(output, 'b s e -> b (s e)')
+        # output = torch.mean(output, dim=1)
+        output = self.classifier(output)
+        output = torch.sigmoid(output)
+        return output
+
+    def format_target(self, target):
+        target = torch.cat(target, dim=0)
+        target = target.squeeze()
+        return target
 
 
 class TransformerModel(pl.LightningModule):
@@ -136,7 +132,6 @@ class TransformerModel(pl.LightningModule):
         super(TransformerModel, self).__init__()
 
         self.save_hyperparameters()
-
         # self.criterion = nn.CrossEntropyLoss()
         self.criterion = nn.BCELoss()
         # shared dropout value for pe and tm(el)
@@ -144,7 +139,13 @@ class TransformerModel(pl.LightningModule):
             self.hparams.ninp//2, self.hparams.dropout, max_len=self.hparams.seq_len)
         encoder_layers = TransformerEncoderLayer(
             self.hparams.ninp//2, self.hparams.nhead, self.hparams.nhid, self.hparams.dropout)
+
+        decoder_layers = TransformerDecoderLayer(
+            self.hparams.ninp//2, self.hparams.nhead, self.hparams.nhid, self.hparams.dropout)
+
         self.transformer_encoder = TransformerEncoder(
+            encoder_layers, self.hparams.nlayers)
+        self.transformer_decoder = TransformerDecoder(
             encoder_layers, self.hparams.nlayers)
         self.encoder = nn.Linear(self.hparams.ninp, self.hparams.ninp//2)
         self.decoder = nn.Linear(self.hparams.ninp//2,
@@ -175,14 +176,12 @@ class TransformerModel(pl.LightningModule):
             nn.Linear(self.hparams.token_embedding * len(self.hparams.experts), self.hparams.ntoken))
         self.norm = nn.LayerNorm(self.hparams.ninp//2)
 
-        self.collab = CollaborativeGating()
         self.init_weights()
         self.running_embeds = []
         self.running_labels = []
         self.running_logits = []
         self.running_paths = []
         self.test_dict = {}
-        self.save_hyperparameters()
 
     def configure_optimizers(self):
         optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.learning_rate,
@@ -407,6 +406,8 @@ class TransformerModel(pl.LightningModule):
         src = self.norm(src)
         src_mask = src_mask.to(self.device)
         output = self.transformer_encoder(src, src_mask)
+        output = self.transformer_decoder(output)
+        print("decoder output", output.shape)
         output = self.decoder(output)
         output = torch.sigmoid(output)
         # output = F.softmax(output)

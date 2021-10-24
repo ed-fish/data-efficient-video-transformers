@@ -1,28 +1,30 @@
 # General params
-batch_size: 10
-learning_rate: 0.05
+batch_size: 64
+learning_rate: 0.0005
 epochs: 500
-seq_len: 150
+seq_len: 200
 
 # Optimisation
-dropout: 0.5
-momentum: 0.00005
-weight_decay: 0.00005
+dropout: 0.05
+momentum: 0.0005
+weight_decay: 0.005
 scheduling: True
 warm_up: 2
+n_classes: 15
 
 # num_samples: 50000
 # Architecure optimisation
 
 input_shape: 2048
+input_dimension: 2048
 ninp: 2048
-nhead: 2
+nhead: 8
 token_embedding: 1024
 ntoken: 15
 hidden_layer: 2048
 mixing: "post-collab"
 encoder_layers: 2048
-nlayers: 2
+nlayers: 6
 nhid: 1850
 projection_size: 15
 output_shape: 128
@@ -35,7 +37,7 @@ pooling: "none"
 # img = 2048, location = 2048, motion = 512, audio = 128, all=4736
 
 #experts: ["test-video-embeddings", "test-location-embeddings", "test-img-embeddings", "audio-embeddings"]
-experts: ["test-img-embeddings", "test-location-embeddings", "test-video-embeddings"]
+experts: ["test-img-embeddings"]
 train_experts: ["img-embeddings"]
 test_experts: ["test-img-embeddings"]
 # experts: ["location-embeddings", "img-embeddings", "video-embeddings", "audio-embeddings"]

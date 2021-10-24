@@ -10,7 +10,7 @@ from dataloaders.MMX_Temporal_dl import MMXDataset, MMXDataModule
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pl_bolts.optimizers.lr_scheduler import LinearWarmupCosineAnnealingLR
 from models.LSTM import LSTMRegressor
-from models.transformer import TransformerModel
+from models.transformer import TransformerModel, SimpleTransformer
 from callbacks.callbacks import TransformerEval, DisplayResults
 from yaml.loader import SafeLoader
 import torch.nn as nn
@@ -38,7 +38,7 @@ def train():
     config = wandb.config
     callbacks = [checkpoint, transformer_callback, display]
 
-    model = TransformerModel(**config)
+    model = SimpleTransformer(**config)
     # model = LSTMRegressor(seq_len=200, batch_size=64, criterion=nn.BCELoss(
     # ), n_features=4608, hidden_size=512, num_layers=4, dropout=0.2, learning_rate=0.00005)
     trainer = pl.Trainer(gpus=[3], callbacks=[
