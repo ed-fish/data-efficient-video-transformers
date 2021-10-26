@@ -14,25 +14,28 @@ import resource
 from collections import OrderedDict
 
 
-
 input_dir = "/mnt/bigelow/scratch/mmx_aug/"
+
 
 def create_embedding_dict(filepath):
     genre_name = filepath.split("/")[-3:-1]
-    orig_dir = filepath.replace("/mnt/bigelow/scratch/mmx_aug", "/mnt/fvpbignas/datasets/mmx_raw")
-    print(orig_dir)
+    orig_dir = filepath.replace(
+        "/mnt/bigelow/scratch/mmx_aug", "/mnt/fvpbignas/datasets/mmx_raw")
+   
     dirs = os.listdir(orig_dir)
     meta_data = os.path.join(orig_dir, dirs[0], "meta.pkl")
     with open(meta_data, "rb") as pickly:
         label = pickle.load(pickly)
 
-    # subdirs = [000,001,002] 
+    # subdirs = [000,001,002]
     scenes = glob.glob(filepath + "/*/")
-    scenes = sorted(scenes, key = lambda x: (int(re.findall("[0-9]+", x.split("/")[-2])[0])))
+    scenes = sorted(scenes, key=lambda x: (
+        int(re.findall("[0-9]+", x.split("/")[-2])[0])))
     # if len(subdirs) < 2:
     #     return False
 
-    experts = ["test-location-embeddings", "test-img-embeddings", "test-video-embeddings", "audio-embeddings"]
+    experts = ["img-embeddings", "location-embeddings", "motion-embeddings",
+               "test-location-embeddings", "test-img-embeddings", "test-video-embeddings", "audio-embeddings"]
     out_dict = OrderedDict()
     scene_dict = OrderedDict()
 
@@ -56,18 +59,17 @@ def create_embedding_dict(filepath):
                         expert_dict[expert_dir] = tensor_list
                         # expert_list.append(tensor_list)
                     elif len(os.listdir(tens_dir)) == 1:
-                        print("expert", expert_dir)
-                        expert_tensor = glob.glob(tens_dir + "/*.pt") 
+                       
+                        expert_tensor = glob.glob(tens_dir + "/*.pt")
                         #expert_tensor = torch.load(expert_tensor[0], map_location="cpu")
                         #expert_tensor = expert_tensor.cpu().detach().numpy()
-                        #expert_list.append(expert_tensor[0])
+                        # expert_list.append(expert_tensor[0])
                         expert_dict[expert_dir] = expert_tensor[0]
                     else:
                         # print("no audio")
                         # No audio embedding available
                         continue
                 except FileNotFoundError:
-                    print("no embedding found")
                     continue
             chunk_str = chunk.split("/")[-2]
             # chunk_dict[os.path.basename(chunk_str)] = expert_list
@@ -82,7 +84,8 @@ def create_embedding_dict(filepath):
 def create_scene_dict_train(filepath):
     experts = ["location-embeddings", "img-embeddings", "video-embeddings"]
 
-    orig_dir = filepath.replace("/mnt/bigelow/scratch/mmx_aug", "/mnt/fvpbignas/datasets/mmx_raw")
+    orig_dir = filepath.replace(
+        "/mnt/bigelow/scratch/mmx_aug", "/mnt/fvpbignas/datasets/mmx_raw")
 
     scene = orig_dir.split("/")[-2]
 
@@ -113,17 +116,20 @@ def create_scene_dict_train(filepath):
                 continue
         chunk_str = chunk.split("/")[-2]
         chunk_dict[os.path.basename(chunk_str)] = expert_list
-    scene_dict = {"path":orig_dir, "scene":scene, "label":label, "data":chunk_dict}
+    scene_dict = {"path": orig_dir, "scene": scene,
+                  "label": label, "data": chunk_dict}
     return scene_dict
 
 
 def create_scene_dict_test(filepath):
-    experts = ["test-location-embeddings", "test-img-embeddings", "test-video-embeddings"]
+    experts = ["test-location-embeddings",
+               "test-img-embeddings", "test-video-embeddings"]
 
-    orig_dir = filepath.replace("/mnt/bigelow/scratch/mmx_aug", "/mnt/fvpbignas/datasets/mmx_raw")
+    orig_dir = filepath.replace(
+        "/mnt/bigelow/scratch/mmx_aug", "/mnt/fvpbignas/datasets/mmx_raw")
 
     scene = orig_dir.split("/")[-2]
-   
+
     dirs = os.listdir(orig_dir)
     meta_data = os.path.join(orig_dir, "meta.pkl")
     with open(meta_data, "rb") as pickly:
@@ -151,7 +157,8 @@ def create_scene_dict_test(filepath):
                 continue
         chunk_str = chunk.split("/")[-2]
         chunk_dict[os.path.basename(chunk_str)] = expert_list
-    scene_dict = {"path":orig_dir, "scene":scene, "label":label, "data":chunk_dict}
+    scene_dict = {"path": orig_dir, "scene": scene,
+                  "label": label, "data": chunk_dict}
     return scene_dict
 
 
@@ -174,8 +181,10 @@ def mp_handler():
     with open("cache.pkl", 'rb') as cache:
         data = pickle.load(cache)
         random.shuffle(data)
-        train_data = data[:int((len(data)+1)*.90)] #Remaining 80% to training set
-        test_data = data[int((len(data)+1)*.90):] #Splits 20% data to test set
+        # Remaining 80% to training set
+        train_data = data[:int((len(data)+1)*.90)]
+        # Splits 20% data to test set
+        test_data = data[int((len(data)+1)*.90):]
         print("training_data", len(train_data))
         print("testing_data", len(test_data))
     big_list = []
@@ -187,15 +196,15 @@ def mp_handler():
     #         if result:
     #             pickle.dump(result, pkly)
 
-    with open("train_tst.pkl", 'ab') as pkly:
+    with open("mmx_train_temporal.pkl", 'ab') as pkly:
         for result in p.imap(create_embedding_dict, tqdm.tqdm(train_data, total=len(train_data))):
             if result:
                 pickle.dump(result, pkly)
 
-    with open("val_tst.pkl", 'ab') as pkly:
+    with open("mmx_val_temporal.pkl", 'ab') as pkly:
         for result in p.imap(create_embedding_dict, tqdm.tqdm(test_data, total=len(test_data))):
-           if result:
-               pickle.dump(result, pkly)
+            if result:
+                pickle.dump(result, pkly)
 
 if __name__ == "__main__":
     torch.multiprocessing.set_sharing_strategy('file_system')

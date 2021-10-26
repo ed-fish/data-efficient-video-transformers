@@ -44,8 +44,8 @@ def train():
     trainer = pl.Trainer(gpus=[3], callbacks=[
         transformer_callback], logger=wandb_logger)
 
-    dm = MMXDataModule("data/mmx/mmx_train.pkl",
-                       "data/mmx/mmx_val.pkl", config)
+    dm = MMXDataModule("data/mmx/mmx_train_temporal.pkl",
+                       "data/mmx/mmx_val_temporal.pkl", config)
     trainer.fit(model, datamodule=dm)
     # model = model.load_from_checkpoint(
     #     "trained_models/mmx/double/double-epoch=127-v1.ckpt", **config)

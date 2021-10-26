@@ -1,13 +1,13 @@
 # General params
-batch_size: 64
-learning_rate: 0.0005
+batch_size: 32
+learning_rate: 0.005
 epochs: 500
 seq_len: 200
 
 # Optimisation
 dropout: 0.05
-momentum: 0.0005
-weight_decay: 0.005
+momentum: 0.09
+weight_decay: 0.0005
 scheduling: True
 warm_up: 2
 n_classes: 15
@@ -37,7 +37,7 @@ pooling: "none"
 # img = 2048, location = 2048, motion = 512, audio = 128, all=4736
 
 #experts: ["test-video-embeddings", "test-location-embeddings", "test-img-embeddings", "audio-embeddings"]
-experts: ["test-img-embeddings"]
+experts: ["img-embeddings"]
 train_experts: ["img-embeddings"]
 test_experts: ["test-img-embeddings"]
 # experts: ["location-embeddings", "img-embeddings", "video-embeddings", "audio-embeddings"]

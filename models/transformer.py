@@ -87,7 +87,6 @@ class SimpleTransformer(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-
         data = batch["experts"]
         target = batch["label"]
         data = self.shared_step(data)
@@ -99,7 +98,6 @@ class SimpleTransformer(pl.LightningModule):
         self.running_labels.append(target)
         self.running_logits.append(data)
         self.log("val/loss", loss, on_step=True, on_epoch=True)
-
         return loss
 
     def shared_step(self, data):

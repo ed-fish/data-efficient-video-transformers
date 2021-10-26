@@ -5,7 +5,7 @@ import random
 import csv
 import torch
 import torch.nn.functional as F
-import _pickle as pickle
+import pickle
 import os
 import numpy as np
 from collections import defaultdict
