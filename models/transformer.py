@@ -16,7 +16,7 @@ class PositionalEncoding(pl.LightningModule):
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
         pe = torch.zeros(max_len, d_model)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        position = torch.arange(0, max_len).unsqueeze(1)
         div_term = torch.exp(torch.arange(
             0, d_model, 2).float() * (-math.log(1000.0) / d_model))
         pe[:, 0::2] = torch.sin(position * div_term)
@@ -38,7 +38,7 @@ class SimpleTransformer(pl.LightningModule):
             nn.Linear(self.hparams.input_dimension,
                       self.hparams.input_dimension//2),
         )
-        self.criterion = nn.BCELoss()
+        self.criterion = nn.CrossEntropyLoss()
         self.position_encoder = PositionalEncoding(
             self.hparams.input_dimension//2, self.hparams.dropout, max_len=self.hparams.seq_len)
         self.encoder_layers = TransformerEncoderLayer(
@@ -62,8 +62,11 @@ class SimpleTransformer(pl.LightningModule):
         )
 
     def configure_optimizers(self):
-        optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.learning_rate,
-                                    momentum=self.hparams.momentum, weight_decay=self.hparams.weight_decay)
+        # optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.learning_rate,
+        #                             momentum=self.hparams.momentum, weight_decay=self.hparams.weight_decay)
+
+        optimizer = torch.optim.AdamW(self.parameters(
+        ), lr=self.hparams.learning_rate, weight_decay=self.hparams.weight_decay)
         return optimizer
 
     def forward(self, src):
@@ -80,7 +83,7 @@ class SimpleTransformer(pl.LightningModule):
         target = batch["label"]
         data = self.shared_step(data)
         target = self.format_target(target)
-        target = target.float()
+        #target = target.float()
         loss = self.criterion(data, target)
         self.log("train/loss", loss, on_step=True, on_epoch=True)
 
@@ -91,29 +94,37 @@ class SimpleTransformer(pl.LightningModule):
         target = batch["label"]
         data = self.shared_step(data)
         target = self.format_target(target)
-        target = target.float()
+        # target = target.float()
         # target = torch.argmax(target, dim=-1)
         loss = self.criterion(data, target)
         # acc_preds = self.preds_acc(data)
+        data = data.detach()
+        data = F.softmax(data, dim=-1)
+        data = torch.argmax(data, dim=-1)
         self.running_labels.append(target)
         self.running_logits.append(data)
         self.log("val/loss", loss, on_step=True, on_epoch=True)
+
         return loss
 
     def shared_step(self, data):
         data = torch.stack(data)
         # data = torch.cat(data, dim=0)
+        data = data.squeeze()
         data = rearrange(data, 'b s e -> s b e')
         # FORWARD
         output = self(data)
         # print("output step 1:", output.shape)
-
         # reshape back to original (S, B, E) -> (B, S, E)
         output = rearrange(output, 's b e -> b s e')
         output = rearrange(output, 'b s e -> b (s e)')
         # output = torch.mean(output, dim=1)
         output = self.classifier(output)
-        output = torch.sigmoid(output)
+        #output = torch.sigmoid(output)
+        #output = F.softmax(output, dim=-1)
+        # print(output[0])
+        #output = torch.argmax(output, dim=-1)
+        # print(output[0])
         return output
 
     def format_target(self, target):
@@ -272,8 +283,8 @@ class TransformerModel(pl.LightningModule):
         transform_t = output.permute(1, 0, 2)
 
         # print("output_reshape", output.shape)
-
         # flatten sequence embeddings (S, B, E) -> (B, S * E)
+
         transform_t = transform_t.reshape(self.hparams.batch_size, -1)
 
         # print("output_reshape 2", output.shape)
@@ -323,12 +334,12 @@ class TransformerModel(pl.LightningModule):
         else:
             data = self.shared_step(data)
         target = self.format_target(target)
-        target = target.float()
+        # target = target.float()
 
         loss = self.criterion(data, target)
         self.log("train/loss", loss, on_step=True, on_epoch=True)
-        # acc_preds = self.preds_acc(data)
 
+        # acc_preds = self.preds_acc(data)
         # gradient clipping for stability
         # torch.nn.utils.clip_grad_norm(self.parameters(), 0.5)
 
@@ -345,7 +356,7 @@ class TransformerModel(pl.LightningModule):
             data = self.shared_step(data)
 
         target = self.format_target(target)
-        target = target.float()
+        # target = target.float()
 
         # target = torch.argmax(target, dim=-1)
         loss = self.criterion(data, target)

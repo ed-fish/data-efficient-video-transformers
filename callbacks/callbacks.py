@@ -7,7 +7,7 @@ from torch.optim import Optimizer
 from torchmetrics.functional import auroc
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import Callback
-from torchmetrics import ConfusionMatrix
+# from torchmetrics import ConfusionMatrix
 import pandas as pd
 import torchmetrics
 import sklearn
@@ -20,7 +20,7 @@ import seaborn as sns
 from sklearn.metrics import f1_score, recall_score, average_precision_score, precision_score
 from torchmetrics.functional import f1, auroc
 #from torchmetrics.functional import accuracy
-from pytorch_lightning.metrics.functional import accuracy
+#from pytorch_lightning.metrics.functional import accuracy
 
 
 class TransformerEval(Callback):
@@ -63,6 +63,26 @@ class TransformerEval(Callback):
             if l:
                 labels.append(target_names[i])
         return labels
+
+
+class MITEval(Callback):
+    def __init__(self):
+        self.best_acc = 0
+
+    def on_validation_epoch_end(self, trainer, pl_module):
+        running_labels = torch.cat(pl_module.running_labels)
+        running_logits = torch.cat(pl_module.running_logits)
+        acc = torch.sum(running_logits == running_labels).item() / \
+            (len(running_labels) * 1.0)
+        pl_module.log("val/accuracy/epoch", acc, on_step=False, on_epoch=True)
+        print(
+            f"acc:{acc} len_S:{len(running_labels)} ex:{running_labels[0]} : {running_logits[0]}")
+        pl_module.running_labels = []
+        pl_module.running_logits = []
+
+        # if acc > self.best_acc:
+        #     trainer.save_checkpoint("mit_location_acc.ckkpt")
+        #     self.best_acc = acc
 
 
 class DisplayResults(Callback):

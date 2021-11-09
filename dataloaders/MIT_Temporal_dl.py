@@ -13,6 +13,7 @@ from torch.utils.data import Dataset, random_split, DataLoader
 import pytorch_lightning as pl
 import json
 from sklearn.model_selection import train_test_split
+from torch.utils.data.sampler import WeightedRandomSampler
 
 
 class MITDataModule(pl.LightningDataModule):
@@ -23,6 +24,18 @@ class MITDataModule(pl.LightningDataModule):
         self.val_data = val_data
         self.config = config
         self.bs = self.config["batch_size"]
+    #     self.label_df = self.load_labels(
+    #         "/home/ed/self-supervised-video/data_processing/moments_categories.csv")
+
+    # def load_labels(self, label_root):
+    #     label_df = pd.read_csv(label_root)
+    #     label_df.set_index('label', inplace=True)
+    #     print("len of labels = ", len(label_df))
+    #     return label_df
+
+    # def collect_labels(self, label):
+    #     index = self.label_df.loc[label]["id"]
+    #     return index
 
     def custom_collater(self, batch):
 
@@ -36,19 +49,27 @@ class MITDataModule(pl.LightningDataModule):
     #    data = self.load_data(self.pickle_file)
     #    self.data = self.clean_data(data)
 
-    def clean_data(self, data_frame):
+    def clean_data(self, data_frame, train=False):
 
         print("cleaning data")
         print(len(data_frame))
         for i in range(len(data_frame)):
 
             data = data_frame.at[i, "data"]
+            # label = data_frame.at[i, "label"]
+            # label = self.collect_labels(label)
+            # data_frame.at[i, "label"] = label
+
             drop = False
             for d in data.values():
                 if len(d.keys()) < 2:
                     drop = True
-                if not "img-embeddings" in d.keys():
-                    drop = True
+                if train:
+                    if not "img-embeddings" in d.keys():
+                        drop = True
+                else:
+                    if not "test-img-embeddings" in d.keys():
+                        drop = True
             if drop:
                 print("dropping missing experts")
                 data_frame = data_frame.drop(i)
@@ -105,7 +126,7 @@ class MITDataModule(pl.LightningDataModule):
                     # append if data serialised with open file
                     data.append(pickle.load(pkly))
                     # else data not streamed
-                    #data = pickle.load(pkly)
+                    # data = pickle.load(pkly)
                 except EOFError:
                     break
 
@@ -114,37 +135,56 @@ class MITDataModule(pl.LightningDataModule):
         print("length", len(data_frame))
 
         # TODO remove - 64 Bx2 testing only
-        data_frame = data_frame.head(168)
+        # data_frame = data_frame.head(10000)
 
         return data_frame
+
+    def create_sampler(self, df):
+        print("balancing data")
+        labels_unique, counts = np.unique(df['label'], return_counts=True)
+        sample_weights = [0] * len(df)
+        class_list = [0] * 305
+
+        print(f"unique labels :{labels_unique}{counts}")
+        # class_weights = [sum(counts) / c for c in counts]
+        class_weights = 1./torch.tensor(counts, dtype=torch.float)
+        for n, i in enumerate(labels_unique):
+            class_list[i] = class_weights[n]
+
+        for n, e in enumerate(df['label']):
+            class_weight = class_list[e]
+            sample_weights[n] = class_weight.detach()
+        sampler = WeightedRandomSampler(
+            sample_weights, len(df['label']), replacement=True)
+        return sampler
 
     def setup(self, stage):
 
         self.train_data = self.load_data(self.train_data)
-        self.train_data = self.clean_data(self.train_data)
-
+        self.train_data = self.clean_data(self.train_data, train=True)
+        self.weighted_sampler = self.create_sampler(self.train_data)
         self.val_data = self.load_data(self.val_data)
-        self.val_data = self.clean_data(self.val_data)
+        self.val_data = self.clean_data(self.val_data, train=False)
 
     def train_dataloader(self):
         print("Loading train dataloader")
-        return DataLoader(MITDataset(self.train_data, self.config), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
+        return DataLoader(MITDataset(self.train_data, self.config, train=True), self.bs, sampler=self.weighted_sampler, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
 
     def val_dataloader(self):
-        return DataLoader(MITDataset(self.val_data, self.config), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
+        return DataLoader(MITDataset(self.val_data, self.config, train=False), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
     # For now use validation until proper test split obtained
 
     def test_dataloader(self):
-        return DataLoader(MITDataset(self.train_data, self.config), 1, shuffle=False, collate_fn=self.custom_collater, num_workers=0)
+        return DataLoader(MITDataset(self.train_data, self.config, train=False), 1, shuffle=False, collate_fn=self.custom_collater, num_workers=0)
 
 
 class MITDataset(Dataset):
-    def __init__(self, data, config):
+    def __init__(self, data, config, train=True):
         super().__init__()
 
         self.config = config
         self.data_frame = data
-        print(self.data_frame)
+        self.train = train
         self.aggregation = self.config["aggregation"]
         self.label_df = self.load_labels(
             "/home/ed/self-supervised-video/data_processing/moments_categories.csv")
@@ -172,21 +212,30 @@ class MITDataset(Dataset):
 
     def load_tensor(self, tensor):
         tensor = torch.load(tensor, map_location=torch.device('cpu'))
+        # tensor = torch.load(tensor).detach()
+        # tensor = torch.load(tensor, map_location=torch.device('cpu'))
         return tensor
 
     def __getitem__(self, idx):
 
         label = self.data_frame.at[idx, "label"]
-        label = self.collect_labels(label)
+        # label = self.collect_labels(label)
         data = self.data_frame.at[idx, "data"]
         path = self.data_frame.at[idx, "path"]
 
         # x_i, x_j = random.sample(list(data.values()), 2)
         expert_list = []
+        if self.train:
+            expert = "video-embeddings"
+        else:
+            expert = "test-video-embeddings"
 
         for i, d in enumerate(data.values()):
             if i < 3:
-                expert_list.append(self.load_tensor(d["img-embeddings"][0]))
+                expert_list.append(self.load_tensor(
+                    d[expert][0]))
+        if len(expert_list) < 3:
+            expert_list.append(expert_list[0])
         expert_list = torch.cat(expert_list, dim=0)
         expert_list = expert_list.unsqueeze(0)
         label = torch.tensor([label])
