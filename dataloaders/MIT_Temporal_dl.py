@@ -15,7 +15,6 @@ import json
 from sklearn.model_selection import train_test_split
 from torch.utils.data.sampler import WeightedRandomSampler
 
-
 class MITDataModule(pl.LightningDataModule):
 
     def __init__(self, train_data, val_data, config):
@@ -61,15 +60,17 @@ class MITDataModule(pl.LightningDataModule):
             # data_frame.at[i, "label"] = label
 
             drop = False
-            for d in data.values():
-                if len(d.keys()) < 2:
+            # if len(data.values()) > 3:
+            #     print(data.values())
+            for key, value in data.items():
+                if len(value.keys()) < 2:
                     drop = True
-                if train:
-                    if not "img-embeddings" in d.keys():
-                        drop = True
-                else:
-                    if not "test-img-embeddings" in d.keys():
-                        drop = True
+                # if train:
+                #     if not "img-embeddings" in value.keys():
+                #         del data[key]
+                # else:
+                #     if not "test-img-embeddings" in value.keys():
+                #         del data[key]
             if drop:
                 print("dropping missing experts")
                 data_frame = data_frame.drop(i)
@@ -226,16 +227,25 @@ class MITDataset(Dataset):
         # x_i, x_j = random.sample(list(data.values()), 2)
         expert_list = []
         if self.train:
-            expert = "video-embeddings"
+            expert = "location-embeddings"
         else:
-            expert = "test-video-embeddings"
+            expert = "test-location-embeddings"
+
+        temp_list = []
+        
 
         for i, d in enumerate(data.values()):
+            try:
+                temp_list.append(d[expert][0])
+            except KeyError:
+                continue
+        
+        temp_list = sorted(temp_list)
+        for i, d in enumerate(temp_list):
             if i < 3:
-                expert_list.append(self.load_tensor(
-                    d[expert][0]))
+                expert_list.append(self.load_tensor(temp_list[i]))
         if len(expert_list) < 3:
-            expert_list.append(expert_list[0])
+            expert_list.append(expert_list[-1])
         expert_list = torch.cat(expert_list, dim=0)
         expert_list = expert_list.unsqueeze(0)
         label = torch.tensor([label])

@@ -1,14 +1,10 @@
-import confuse
-import numpy as np
 import math
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import TransformerEncoder, TransformerEncoderLayer, TransformerDecoderLayer, TransformerDecoder
-from torch.nn.modules import loss
-from einops import reduce, rearrange
-from torch.nn.modules.activation import ReLU
+from einops import rearrange
 
 
 class PositionalEncoding(pl.LightningModule):
@@ -40,7 +36,8 @@ class SimpleTransformer(pl.LightningModule):
         )
         self.criterion = nn.CrossEntropyLoss()
         self.position_encoder = PositionalEncoding(
-            self.hparams.input_dimension//2, self.hparams.dropout, max_len=self.hparams.seq_len)
+            self.hparams.input_dimension//2, self.hparams.dropout,
+            max_len=self.hparams.seq_len)
         self.encoder_layers = TransformerEncoderLayer(
             self.hparams.input_dimension//2, self.hparams.nhead, self.hparams.nhid, self.hparams.dropout)
         self.transformer_encoder = TransformerEncoder(
@@ -52,13 +49,14 @@ class SimpleTransformer(pl.LightningModule):
         self.running_logits = []
         self.classifier = nn.Sequential(
             nn.Linear(self.hparams.input_dimension//2 * self.hparams.seq_len,
-                      self.hparams.input_dimension//2),
+                      self.hparams.input_dimension),
             nn.ReLU(),
-            nn.Linear(self.hparams.input_dimension//2,
-                      self.hparams.input_dimension // 4),
+            nn.Dropout(self.hparams.dropout),
+            nn.Linear(self.hparams.input_dimension,
+                      self.hparams.input_dimension // 2),
             nn.ReLU(),
             nn.Linear(self.hparams.input_dimension //
-                      4, self.hparams.n_classes),
+                      2, self.hparams.n_classes),
         )
 
     def configure_optimizers(self):

@@ -35,7 +35,7 @@ def train():
 # Open the file and load the file
     with open('config.yaml') as f:
         data = yaml.load(f, Loader=SafeLoader)
-    wandb.init(project="transformer-video", name="mit-img-w-adam-0.5-do",
+    wandb.init(project="transformer-video", name="mit-loc-w-adam-0.7-do",
                config=data)
     config = wandb.config
     #callbacks = [checkpoint, transformer_callback, display]
@@ -53,7 +53,7 @@ def train():
     #     transformer_callback], logger=wandb_logger)
 
     # MIT TRAINER
-    trainer = pl.Trainer(gpus=[1], callbacks=callbacks, logger=wandb_logger)
+    trainer = pl.Trainer(gpus=[0], callbacks=callbacks, logger=wandb_logger)
 
     # MMX DATASET
 
