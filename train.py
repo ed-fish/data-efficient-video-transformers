@@ -22,10 +22,10 @@ def train():
     # torch.multiprocessing.set_sharing_strategy('file_system')
     # lr_monitor = LearningRateMonitor(logging_interval='epoch')
     wandb_logger = WandbLogger(
-        project="self-supervised-video", log_model='all')
+        project="self-supervised-video")
     transformer_callback = TransformerEval()
-    checkpoint = ModelCheckpoint(
-        save_top_k=-1, dirpath="trained_models/mmx/double", filename="double-{epoch:02d}")
+    # checkpoint = ModelCheckpoint(
+    #     save_top_k=-1, dirpath="trained_models/mmx/double", filename="double-{epoch:02d}")
     display = DisplayResults()
 
     # dm = MITDataModule("data/mit/mit_tensors_train_wc.pkl","data/mit/mit_tensors_train_wc.pkl", config)
@@ -35,7 +35,7 @@ def train():
 # Open the file and load the file
     with open('config.yaml') as f:
         data = yaml.load(f, Loader=SafeLoader)
-    wandb.init(project="transformer-video", name="mit-loc-w-adam-0.7-do",
+    wandb.init(project="transformer-video", name="mit-all-sgd",
                config=data)
     config = wandb.config
     #callbacks = [checkpoint, transformer_callback, display]
@@ -53,7 +53,7 @@ def train():
     #     transformer_callback], logger=wandb_logger)
 
     # MIT TRAINER
-    trainer = pl.Trainer(gpus=[0], callbacks=callbacks, logger=wandb_logger)
+    trainer = pl.Trainer(gpus=[config["device"]], callbacks=callbacks, logger=wandb_logger)
 
     # MMX DATASET
 
@@ -68,7 +68,6 @@ def train():
     #     "trained_models/mmx/double/double-epoch=127-v1.ckpt", **config)
 
     # trainer.test(model, datamodule=dm)
-
 
 if __name__ == '__main__':
     train()

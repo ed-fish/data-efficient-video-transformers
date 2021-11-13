@@ -5,6 +5,7 @@ import random
 import csv
 import torch
 import torch.nn.functional as F
+import torch.nn as nn
 import pickle
 import os
 import numpy as np
@@ -136,7 +137,7 @@ class MITDataModule(pl.LightningDataModule):
         print("length", len(data_frame))
 
         # TODO remove - 64 Bx2 testing only
-        # data_frame = data_frame.head(10000)
+        data_frame = data_frame.head(10000)
 
         return data_frame
 
@@ -186,7 +187,6 @@ class MITDataset(Dataset):
         self.config = config
         self.data_frame = data
         self.train = train
-        self.aggregation = self.config["aggregation"]
         self.label_df = self.load_labels(
             "/home/ed/self-supervised-video/data_processing/moments_categories.csv")
 
@@ -213,6 +213,8 @@ class MITDataset(Dataset):
 
     def load_tensor(self, tensor):
         tensor = torch.load(tensor, map_location=torch.device('cpu'))
+        if tensor.shape[-1] != 2048:
+            tensor = nn.ConstantPad1d((0, 2048 - tensor.shape[-1]), 0)(tensor)
         # tensor = torch.load(tensor).detach()
         # tensor = torch.load(tensor, map_location=torch.device('cpu'))
         return tensor
@@ -226,28 +228,68 @@ class MITDataset(Dataset):
 
         # x_i, x_j = random.sample(list(data.values()), 2)
         expert_list = []
-        if self.train:
-            expert = "location-embeddings"
+        target_len = 3
+        if self.config["cls"]:
+            target_len += 1
+
+        if self.config["mixing_method"] == "double_trans":
+
+            for expert in self.config["experts"]:
+
+                expert_t_list = []
+                if self.config["cls"]:
+                    expert_t_list.append(torch.rand(1, 2048))
+                # use test experts
+                if not self.train:
+                    expert = "test-" + expert
+
+                # not ordered dictionary so need to sort
+                temp_list = []
+                # if sample is of len 4 remove the last one 
+                for i, d in enumerate(data.values()):
+                    try:
+                        temp_list.append(d[expert][0])
+                    except KeyError:
+                        continue
+                        
+                temp_list = sorted(temp_list)
+                for i, d in enumerate(temp_list):
+                    if i < target_len:
+                        expert_t_list.append(self.load_tensor(temp_list[i]))
+                while len(expert_t_list) < target_len:
+                    expert_t_list.append(expert_t_list[0])
+
+                print(len(expert_t_list))
+
+                assert(len(expert_t_list) == target_len)
+                t_tens = torch.stack(expert_t_list)
+                t_tens = t_tens.unsqueeze(0)
+                expert_list.append(t_tens)
         else:
-            expert = "test-location-embeddings"
+            # use test experts
+            if not self.train:
+                expert = "test-" + expert
 
-        temp_list = []
+            # not ordered dictionary so need to sort
+            # if sample is of len 4 remove the last one 
+            for i, d in enumerate(data.values()):
+                try:
+                    expert_list.append(d[expert][0])
+                except KeyError:
+                    continue
         
+            temp_list = sorted(temp_list)
+            for i, d in enumerate(temp_list):
+                if i < 3:
+                    expert_list.append(self.load_tensor(temp_list[i]).unsqueeze(0))
+            while len(expert_list) < 3:
+                expert_list.append(expert_list[0])
 
-        for i, d in enumerate(data.values()):
-            try:
-                temp_list.append(d[expert][0])
-            except KeyError:
-                continue
-        
-        temp_list = sorted(temp_list)
-        for i, d in enumerate(temp_list):
-            if i < 3:
-                expert_list.append(self.load_tensor(temp_list[i]))
-        if len(expert_list) < 3:
-            expert_list.append(expert_list[-1])
+            assert(len(expert_list) == 3)
+
         expert_list = torch.cat(expert_list, dim=0)
-        expert_list = expert_list.unsqueeze(0)
+        expert_list = expert_list.squeeze()
+        expert_list = expert_list.squeeze()
         label = torch.tensor([label])
 
         # for index, i in enumerate(x_i):
@@ -260,8 +302,6 @@ class MITDataset(Dataset):
         #    t = torch.load(i)
         #    experts_xj.append(t.squeeze())
 
-        if self.aggregation == "debugging":
-            experts_xi = torch.cat(experts_xi, dim=-1)
-            experts_xj = torch.cat(experts_xj, dim=-1)
 
         return {"label": label, "path": path, "expert_list": expert_list}
+
