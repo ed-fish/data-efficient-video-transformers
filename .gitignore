@@ -6,5 +6,6 @@
 /runs
 *.pkl
 /trained_models/
+.vscode/
 
 
