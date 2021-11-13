@@ -371,7 +371,7 @@ class TransformerModel(pl.LightningModule):
         data = batch["experts"]
         target = batch["label"]
 
-        if self.hparams.mixing_method == "post_collab":
+        if self.hparams.model == "double_transformer":
             # data = self.post_collab(data)
             data = self.post_transformer(data)
         else:
@@ -393,7 +393,7 @@ class TransformerModel(pl.LightningModule):
         data = batch["experts"]
         target = batch["label"]
 
-        if self.hparams.mixing_method == "post_collab":
+        if self.hparams.model == "double_transformer":
             data = self.post_transformer(data)
         else:
             data = self.shared_step(data)

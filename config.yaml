@@ -22,6 +22,12 @@ nlayers: 2
 nhid: 1028
 projection_size: 305
 
+data_set: "mit"
+# double_transformer, single_transformer, lstm
+model: "double_transformer"
+logger: "double_transformer"
+name: "mit all sgd"
+
 #experts: ["test-video-embeddings", "test-location-embeddings", "test-img-embeddings", "audio-embeddings"]
 experts: ["img-embeddings", "location-embeddings", "video-embeddings"]
 # experts: ["location-embeddings", "img-embeddings", "video-embeddings", "audio-embeddings"]
@@ -30,8 +36,6 @@ cls: 1
 
 # Multi modal settings
 mixing_method: "double_trans"
-# options = "pre-trans", "post-trans", "pre_contrast"
 
-# Self supervised options
 device: 1
 save_path: "/trained_models/mit/transformer/"

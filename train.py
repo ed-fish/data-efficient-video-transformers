@@ -19,50 +19,38 @@ import torch.nn as nn
 
 
 def train():
-    # torch.multiprocessing.set_sharing_strategy('file_system')
-    # lr_monitor = LearningRateMonitor(logging_interval='epoch')
-    wandb_logger = WandbLogger(
-        project="self-supervised-video")
-    transformer_callback = TransformerEval()
-    # checkpoint = ModelCheckpoint(
-    #     save_top_k=-1, dirpath="trained_models/mmx/double", filename="double-{epoch:02d}")
-    display = DisplayResults()
-
-    # dm = MITDataModule("data/mit/mit_tensors_train_wc.pkl","data/mit/mit_tensors_train_wc.pkl", config)
-    # dm = MMXDataModule("data/mmx/mmx_tensors_val.pkl","data/mmx/mmx_tensors_val.pkl", config)
-    # configuration
-
-# Open the file and load the file
     with open('config.yaml') as f:
         data = yaml.load(f, Loader=SafeLoader)
     wandb.init(project="transformer-video", name="mit-all-sgd",
                config=data)
     config = wandb.config
-    #callbacks = [checkpoint, transformer_callback, display]
-    miteval = MITEval()
-    callbacks = [miteval]
 
-    model = SimpleTransformer(**config)
+    wandb_logger = WandbLogger(
+        project=config["logger"])
 
-    # lstm
-    # model = LSTMRegressor(seq_len=200, batch_size=64, criterion=nn.BCELoss(
-    # ), n_features=4608, hidden_size=512, num_layers=4, dropout=0.2, learning_rate=0.00005)
+    if config["model"] == "double_transformer":
+        model = SimpleTransformer(**config)
+    elif config["model"] == "lstm":
+        model = LSTMRegressor(seq_len=200, batch_size=64,
+        criterion=nn.BCELoss(), n_features=4608, hidden_size=512, num_layers=4,
+        dropout=0.2, learning_rate=0.00005)
 
-    # MMX TRAINER
-    # trainer = pl.Trainer(gpus=[3], callbacks=[
-    #     transformer_callback], logger=wandb_logger)
+    if config["data_set"] == "mit":
+        miteval = MITEval()
+        dm = MITDataModule("data/mit/MIT_train_temporal.pkl",
+                        "data/mit/MIT_validation_temporal.pkl", config)
+        callbacks = [miteval]
 
-    # MIT TRAINER
-    trainer = pl.Trainer(gpus=[config["device"]], callbacks=callbacks, logger=wandb_logger)
-
-    # MMX DATASET
-
-    # dm = MMXDataModule("data/mmx/mmx_train_temporal.pkl",
-    #                   "data/mmx/mmx_val_temporal.pkl", config)
-
-    # MIT DATASET
-    dm = MITDataModule("data/mit/MIT_train_temporal.pkl",
-                       "data/mit/MIT_validation_temporal.pkl", config)
+    elif config["data_set"] == "mmx":
+        transformer_callback = TransformerEval()
+        dm = MMXDataModule("data/mmx/mmx_train_temporal.pkl", 
+                        "data/mmx/mmx_val_temporal.pkl", config)
+        callbacks = ["transformer_callback"]
+        # checkpoint = ModelCheckpoint(
+        #     save_top_k=-1, dirpath="trained_models/mmx/double", filename="double-{epoch:02d}")
+        # display = DisplayResults()
+ 
+    trainer = pl.Trainer(gpus=[config["device"]], callbacks=callbacks, logger=wandb_logger)        
     trainer.fit(model, datamodule=dm)
     # model = model.load_from_checkpoint(
     #     "trained_models/mmx/double/double-epoch=127-v1.ckpt", **config)
