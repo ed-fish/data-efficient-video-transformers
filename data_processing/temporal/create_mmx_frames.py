@@ -3,6 +3,8 @@ import pickle
 import glob
 import os
 import re
+import multiprocessing as mp
+import random
 
 from collections import OrderedDict
 
@@ -23,9 +25,13 @@ def create_frame_path_dict(filepath):
     genre_name = filepath.split("/")[-3:-1]
     orig_dir = filepath.replace(
         "/mnt/bigelow/scratch/mmx_aug", "/mnt/fvpbignas/datasets/mmx_raw")
+
+    if not os.path.exists(orig_dir):
+        return False
    
     dirs = os.listdir(orig_dir)
     meta_data = os.path.join(orig_dir, dirs[0], "meta.pkl")
+
     with open(meta_data, "rb") as pickly:
         label = pickle.load(pickly)
 
@@ -59,17 +65,43 @@ def create_frame_path_dict(filepath):
             img_paths = sorted(img_paths, key=lambda i: int(os.path.splitext(os.path.basename(i))[0]))
             while len(img_paths) < 16:
                 img_paths.append(img_paths[-1])
-            print(len(img_paths))
             clip_dict[j] = img_paths
         scene_dict[i] = clip_dict
     out_dict = {"label": label[0],"year":label[1], "path":filepath, "scenes":scene_dict}
-    print(out_dict)
     return out_dict
 
-input_dir = "/mnt/bigelow/scratch/mmx_aug/"
+def mp_handler():
+    p = mp.Pool(40)
+    data_list = []
+    
+    with open("cache.pkl", 'rb') as cache:
+        data = pickle.load(cache)
+        random.shuffle(data)
+        # Remaining 80% to training set
+        train_data = data[:int((len(data)+1)*.90)]
+        # Splits 20% data to test set
+        test_data = data[int((len(data)+1)*.90):]
+        print("training_data", len(train_data))
+        print("testing_data", len(test_data))
+
 #squish_folders(input_dir)
-with open("cache.pkl", 'rb') as cache:
-    data = pickle.load(cache)
-    for i, d in enumerate(data):
-        create_frame_path_dict(d)
+
+    with open("mmx_train_temporal.pkl", 'ab') as pkly:
+        for result in p.imap(create_frame_path_dict, tqdm.tqdm(train_data, total=len(train_data))):
+            if result:
+                pickle.dump(result, pkly)
+
+    with open("mmx_val_temporal.pkl", 'ab') as pkly:
+        for result in p.imap(create_frame_path_dict, tqdm.tqdm(test_data, total=len(test_data))):
+            if result:
+                pickle.dump(result, pkly)
+
+if __name__ == "__main__":
+    # rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
+    # resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
+
+    #squish_folders(input_dir)
+    mp_handler()
+
+    
 
