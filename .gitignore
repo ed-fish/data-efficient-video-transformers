@@ -1,7 +1,11 @@
 /lightninglogs
+/wandb
 **/__pycache__
 */mmx_tensors*
 /data
 /runs
+*.pkl
+/trained_models/
+.vscode/
 
 

@@ -1,0 +1,43 @@
+# General params
+batch_size: 2
+learning_rate: 0.00005
+epochs: 500
+seq_len: 20
+clip_len: 3
+frame_len: 3
+
+# Optimisation
+dropout: 0.5
+momentum: 0.005
+weight_decay: 0.000005
+scheduling: True
+warm_up: 2
+n_classes: 15
+
+# num_samples: 50000
+# Architecure optimisation
+
+input_dimension: 2048
+nhead: 2
+token_embedding: 305
+nlayers: 2
+nhid: 1028
+projection_size: 305
+
+data_set: "mmx-frame"
+# double_transformer, single_transformer, lstm
+model: "frame_transformer"
+logger: "double_transformer"
+name: "mmx-frame-test"
+
+#experts: ["test-video-embeddings", "test-location-embeddings", "test-img-embeddings", "audio-embeddings"]
+experts: ["img-embeddings", "location-embeddings", "video-embeddings"]
+# experts: ["location-embeddings", "img-embeddings", "video-embeddings", "audio-embeddings"]
+# pool or None
+cls: 1
+
+# Multi modal settings
+mixing_method: "double_trans"
+
+device: 1
+save_path: "/trained_models/mit/transformer/"
