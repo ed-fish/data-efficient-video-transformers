@@ -1,21 +1,12 @@
-# self-supervised-video
-Multi-modal spatio-temporal contrastive learning experiments using pre-computed embeddings.
+# stacked video transformer
 
-- Spatio-temporal contrastive learning with InfoNCE
-- Attention based transformer using spatio-temporal crops and dropped tokens
-- Mix of fusion methods including collaborative gating
-
-WIP 
-
-bib tex for the dataset:
-
-```@article{monfortmoments,
-  title={Moments in Time Dataset: one million videos for event understanding},
-  author={Monfort, Mathew and Andonian, Alex and Zhou, Bolei and Ramakrishnan, Kandan and Bargal, Sarah Adel and Yan, Tom and Brown, Lisa and Fan, Quanfu and Gutfruend, Dan and Vondrick, Carl and others},
-  journal={IEEE Transactions on Pattern Analysis and Machine Intelligence},
-  year={2019},
-  issn={0162-8828},
-  pages={1--8},
-  numpages={8},
-  doi={10.1109/TPAMI.2019.2901464},
-}
+  An experiment in stacking transformer networks with convolutional token inputs. 
+  
+  Videos are broken down into frames, clips, scenes, and videos with a transformer network aggregating representations at each stage via a learnable CLS token. 
+  
+  The network learns the representation of a clip via attention on frames, a scene via attention on clips, and a whole video  via attention of scenes. 
+  This reduces the computational complexity of implementing transformers on very long videos as each temporal level is encoded into a single CLS token.
+  
+  I am still experimenting with this method and currently working through the engineering challenges before I can fully explore the through a comprehensive research project and paper. 
+  
+  This work is linked to my current work on efficient multi-modal transformer networks for long videos but is a different approach. 
