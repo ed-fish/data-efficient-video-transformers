@@ -10,3 +10,5 @@
   I am still experimenting with this method and currently working through the engineering challenges before I can fully explore the through a comprehensive research project and paper. 
   
   This work is linked to my current work on efficient multi-modal transformer networks for long videos but is a different approach. 
+  
+  ***This code will not run correctly without the formatted dataset. I will endeavor to release a generic version for MIT and Kinetics asap***
