@@ -21,7 +21,7 @@ def main():
     callbacks = []
     with open('config.yaml') as f:
         data = yaml.load(f, Loader=SafeLoader)
-    wandb.init(project="transformer-video", name="mmx-frame-test",
+    wandb.init(project="transformer-frame-video", name="mmx-frame-test",
                config=data)
     config = wandb.config
     print(config["data_set"])
@@ -64,13 +64,29 @@ def main():
         assert(
             "No dataset selected, please update the configuration \n mit, mmx, mmx-frame")
 
-    trainer = pl.Trainer(gpus=4,callbacks=callbacks, logger=wandb_logger, strategy="ddp")
+    def weights_init_normal(m):
+        '''Takes in a module and initializes all linear layers with weight
+        values taken from a normal distribution.'''
+
+        classname = m.__class__.__name__
+        # for every Linear layer in a model
+        if classname.find('Linear') != -1:
+            y = m.in_features
+        # m.weight.data shoud be taken from a normal distribution
+            m.weight.data.normal_(0.0, 1/np.sqrt(y))
+        # m.bias.data should be 0
+            m.bias.data.fill_(0)
+
+    weights_init_normal(model)
+
+    trainer = pl.Trainer(gpus=[3], callbacks=callbacks,
+                         logger=wandb_logger, max_epochs=2000)
     trainer.fit(model, datamodule=dm)
     # model = model.load_from_checkpoint(
     #     "trained_models/mmx/double/double-epoch=127-v1.ckpt", **config)
-
     # trainer.test(model, datamodule=dm)
 
+
 if __name__ == '__main__':
-    torch.multiprocessing.set_sharing_strategy('file_system')
+    # torch.multiprocessing.set_sharing_strategy('file_system')
     main()

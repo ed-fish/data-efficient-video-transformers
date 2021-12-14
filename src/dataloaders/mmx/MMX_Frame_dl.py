@@ -16,6 +16,10 @@ import json
 from sklearn.model_selection import train_test_split
 from PIL import Image
 from torchvision import transforms
+from tqdm import tqdm
+import wandb
+from torchvision.utils import make_grid
+from torch.utils.data.dataloader import default_collate
 
 
 class MMXFrameDataModule(pl.LightningDataModule):
@@ -41,7 +45,9 @@ class MMXFrameDataModule(pl.LightningDataModule):
                     break
 
         data_frame = pd.DataFrame(data)
-        # data_frame = data_frame.head(100)
+        data_frame = data_frame.reset_index(drop=True)
+        print("length of data", len(data_frame))
+        #data_frame = data_frame.head(1000)
         return data_frame
 
     def setup(self, stage):
@@ -49,10 +55,10 @@ class MMXFrameDataModule(pl.LightningDataModule):
         self.val_data = self.load_data(self.val_data)
 
     def train_dataloader(self):
-        return DataLoader(MMXFrameDataset(self.train_data, self.config, state="train"), self.bs, shuffle=True, num_workers=5, drop_last=True)
+        return DataLoader(MMXFrameDataset(self.train_data, self.config, state="train"), self.bs,  shuffle=True, num_workers=10, drop_last=True)
 
     def val_dataloader(self):
-        return DataLoader(MMXFrameDataset(self.val_data, self.config, state="val"), self.bs, shuffle=False, num_workers=5, drop_last=True)
+        return DataLoader(MMXFrameDataset(self.val_data, self.config, state="val"), self.bs, shuffle=False, num_workers=10, drop_last=True)
 
     def test_dataloader(self):
         return DataLoader(MMXFrameDataset(self.val_data, self.config, state="test"), self.bs, shuffle=False, drop_last=True)
@@ -66,46 +72,63 @@ class MMXFrameDataset(Dataset):
         self.data_frame = data
         self.seq_len = self.config["seq_len"]
         self.state = state
-        
-        self.transform = transforms.Compose([transforms.Resize(300), 
-                                        transforms.CenterCrop(224),
-                                        transforms.ToTensor(),
-                                        transforms.Normalize(mean=[0.485, 0.456, 0.406], 
-                                                             std=[0.229, 0.224, 0.225]), 
-                                        ])
+        self.max_len = self.config["seq_len"]
+
+        self.train_transform = transforms.Compose([
+            transforms.RandomResizedCrop(224),
+            transforms.RandomHorizontalFlip(p=0.3),
+            transforms.RandomVerticalFlip(p=0.3),
+            transforms.AutoAugment(),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                 std=[0.229, 0.224, 0.225]),
+        ])
+
+        self.val_transform = transforms.Compose([
+            transforms.Resize(230),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                 std=[0.229, 0.224, 0.225]),
+        ])
 
     def __len__(self):
         return len(self.data_frame)
 
     def pil_loader(self, path):
-        with open(path, "rb") as f:
-            img = Image.open(f)
-            img = img.convert('RGB')
-            img_tensor = self.transform(img)
-            f.close()
-            
-        img_tensor = img_tensor.float()
-        return img_tensor
+        img = Image.open(path)
+        img = img.convert('RGB')
+        if self.state == "train":
+            img = self.train_transform(img)
+        else:
+            img = self.val_transform(img)
+        #img_tensor = img_tensor.float()
+        return img
 
     def __getitem__(self, idx):
 
-        # retrieve labels
         label = self.data_frame.at[idx, "label"]
-        #label = self.label_tidy(label) -> moved to training loop
-        #path = self.data_frame.at[idx, "path"]
-        #label = torch.tensor(label).unsqueeze(0)    # Covert label to tensor
         scenes = self.data_frame.at[idx, "scenes"]
+        x = torch.empty([self.max_len, 3, 224, 224])
+        trailer_list = torch.full_like(x, 0)
 
         # iterate through the scenes for the trailer
-        count = 0
-        trailer_list = np.zeros((self.config["seq_len"], self.config["clip_len"], self.config["frame_len"], 3, 224, 224), dtype=float) # create empty array [0, 100]
+        # trailer_list = np.zeros((self.config["seq_len"], self.config["clip_len"], self.config["frame_len"], 3, 224, 224), dtype=float) # create empty array [0, 100]
+        num_collected = 0
         for j, s in enumerate(scenes.values()):
-            if j < self.config["seq_len"]: 
-                for n, c in enumerate(s.values()):
-                    if n < self.config["clip_len"]:
-                        for f, img in enumerate(c[:self.config["frame_len"]]):
-                            img_tensor = self.pil_loader(img)
-                            trailer_list[j][n][f] = img_tensor
-            
+            if num_collected == self.config["seq_len"]:
+                break
+            try:
+                clip = s[0]
+            except KeyError:
+                try:
+                    clip = s["000"]
+                except KeyError:
+                    try:
+                        clip = s["0"]
+                    except:
+                        continue
+            img_tensor = self.pil_loader(clip[0])
+            trailer_list[num_collected] = img_tensor
+            num_collected += 1
         return label, trailer_list
- 

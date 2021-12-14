@@ -1,12 +1,15 @@
 import math
-import numpy as np
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
 from torch.nn import TransformerEncoder, TransformerEncoderLayer, TransformerDecoderLayer, TransformerDecoder
+from torchmetrics import AUROC, F1, AveragePrecision
 from einops import rearrange
+import wandb
+from models import custom_resnet
+from torchvision.utils import make_grid, save_image
 
 
 class PositionalEncoding(pl.LightningModule):
@@ -26,34 +29,32 @@ class PositionalEncoding(pl.LightningModule):
         x = x + self.pe[:x.size(0), :]
         return self.dropout(x)
 
-    
+
 class TransformerBase(pl.LightningModule):
     def __init__(self, input_dimension, output_dimension, nhead, nhid,
                  nlayers, dropout):
         super(TransformerBase, self).__init__()
-        encoder_layer = TransformerEncoderLayer(input_dimension, nhead, nhid, dropout)
+        encoder_layer = TransformerEncoderLayer(
+            input_dimension, nhead, nhid, dropout)
         nlayers = nlayers
         self.transformer = TransformerEncoder(encoder_layer, nlayers)
-        
+
     def forward(self, x):
         return self.transformer(x)
-    
- 
+
+
 class ImgResNet(pl.LightningModule):
     def __init__(self):
         super(ImgResNet, self).__init__()
-        backbone = models.resnet18(pretrained=True)
-        num_filters = backbone.fc.in_features
-        layers = list(backbone.children())[:-1]
-        self.feature_extractor = nn.Sequential(*layers)
-        self.classifier = nn.Linear(num_filters, 128)
-        
+        self.backbone = models.resnet18(pretrained=True)
+        num_filters = self.backbone.fc.in_features
+        self.backbone.fc = nn.Sequential(nn.Linear(num_filters, 896))
+
     def forward(self, x):
-        self.feature_extractor.eval()
-        with torch.no_grad():
-            representations = self.feature_extractor(x).flatten(1)
-            x = self.classifier(representations)
-            return x
+        # self.feature_extractor.eval()
+        # with torch.no_grad():
+        representations = self.backbone(x)
+        return representations
 
 
 class FrameTransformer(pl.LightningModule):
@@ -64,80 +65,112 @@ class FrameTransformer(pl.LightningModule):
             self.hparams.seq_len += 1
         self.criterion = nn.BCEWithLogitsLoss()
         self.position_encoder = PositionalEncoding(
-            128, 0.5,
-            max_len=300)
-        self.norm = nn.LayerNorm(self.hparams.input_dimension//2)
+            896, 0.5,
+            max_len=50)
         self.img_model = ImgResNet()
         # self.cls_token = nn.Parameter(
         #     torch.randn(1, 1, self.hparams.input_dimension))
-        
-        self.img_transformer = TransformerBase(128, 128, 2, 128, 2, 0.5)
-        self.clip_transformer = TransformerBase(128, 128, 2, 128, 2, 0.5)
-        self.scene_transformer = TransformerBase(128, 128, 2, 128, 2, 0.5)
+        self.scene_transformer = TransformerBase(896, 896, 8, 896, 8, 0.6)
         self.running_labels = []
-        self.running_logits = [] 
-        img_cls = torch.rand(1, 128)
-        self.register_buffer("img_cls", img_cls)
-        self.mlp_head = nn.Sequential(nn.LayerNorm(128), nn.Linear(128, 15))
+        self.running_logits = []
+        self.img_cls = nn.Parameter(torch.rand(1, 3, 224, 224))
+        self.mlp_head = nn.Sequential(nn.LayerNorm(896), nn.Linear(896, 15))
+        self.decoder = nn.Sequential(nn.Linear(75, 32), nn.GELU(), nn.Dropout(
+            0.5), nn.Linear(32, 32), nn.GELU(), nn.Linear(32, 15))
+        self.encoder = nn.Sequential(nn.Linear(256, 256), nn.Dropout(0.5))
+        self.running_logits = []
+        self.running_labels = []
+        self.val_auroc = AUROC(num_classes=15)
+        self.train_auroc = AUROC(num_classes=15)
+        self.train_aprc = AveragePrecision(num_classes=15)
+        self.norm = nn.LayerNorm(896)
+        self.tpn = TPN()
+        self.val_aprc = AveragePrecision(num_classes=15)
+        self.pool = nn.AdaptiveAvgPool2d((1, 15))
 
     def configure_optimizers(self):
-        #optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.learning_rate,
+        # optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.learning_rate,
         #                            momentum=self.hparams.momentum, weight_decay=self.hparams.weight_decay)
 
-        optimizer = torch.optim.AdamW(self.parameters(
-         ), lr=self.hparams.learning_rate, weight_decay=self.hparams.weight_decay)
+        optimizer = torch.optim.Adam(self.parameters(
+        ), lr=self.hparams.learning_rate, weight_decay=self.hparams.weight_decay)
+
+        # optimizer = torch.optim.Adagrad(self.parameters(
+        # ), lr=self.hparams.learning_rate, weight_decay=self.hparams.weight_decay)
         return optimizer
 
     def forward(self, data):
-        batch = []
-        for b in data:  # batch
-            scenes = [self.img_cls]
-            for s in b:  # scenes
-                clips = [self.img_cls]
-                for c in s:  # clips
-                    imgs = [self.img_cls]
-                    for i in c:  # imgs
-                        i = i.unsqueeze(0)
-                        i = i.float()
-                        img_embedding = self.img_model(i)
-                        imgs.append(img_embedding)
-                    imgs_stack = torch.stack(imgs)
-                    pos_imgs = self.position_encoder(imgs_stack)
-                    img_seq = self.img_transformer(pos_imgs)
-                    clips.append(img_seq[0])
-                clips_stack = torch.stack(clips)
-                # clips_cls_stack = clips_stack[:, 0, :, :]
-                pos_clips = self.position_encoder(clips_stack)
-                clip_seq = self.clip_transformer(pos_clips)
-                scenes.append(clip_seq[0])
-            scenes_stack = torch.stack(scenes)
-            scenes_pos = self.position_encoder(scenes_stack)
-            output = self.scene_transformer(scenes_pos)
-            batch.append(output[0])
-        batch = torch.stack(batch)
-        batch = batch.squeeze()
-        return self.mlp_head(batch)
+        total = []
+        # d = data.squeeze(0)
+        # img_embedding = self.img_model(d) #imgs channel width height
+        # data = [2, 50, 3, 224, 224]
+        # cls = [2, 50, 3, 224, 224]
+        for d in range(len(data)):
+            cls_d = torch.cat((data[d], self.img_cls), dim=0)
+            total.append(cls_d)
+        data = torch.stack(total)
+        data = data.view(-1, 3, 224, 224)
+        data = self.img_model(data)
+        # data = [batch + cls, dim]
+        data = data.view(self.hparams.batch_size, self.hparams.seq_len, -1)
+        data = data.permute(1, 0, 2)
+        data = self.position_encoder(data)
+        img_seq = data.permute(1, 0, 2)
+        img_seq = self.norm(img_seq)
+        img_seq = img_seq.permute(1, 0, 2)
+        img_seq = self.scene_transformer(data)
+        img_seq = img_seq.permute(1, 0, 2)
+        output = img_seq[:, 0]
+        output = self.mlp_head(output)
+
+        return output
 
     def training_step(self, batch, batch_idx):
         target, data = batch
-        #target = self.label_tidy(target)
+        data = data.float()
+        # target = self.label_tidy(target)
+        # save_image(grid, "test.png")
         data = self(data)
-        target = target.squeeze() 
+        target = target.float()
         loss = self.criterion(data, target)
-        self.log("train/loss", loss, on_step=True, on_epoch=True, rank_zero_only=True)
+        target = target.int()
+        self.train_auroc(data, target)
+        self.train_aprc(data, target)
+        self.log("train/loss", loss, on_step=True, on_epoch=True)
+        self.log("train/auroc", self.train_auroc, on_step=True, on_epoch=True)
+        self.log("train/aprc", self.train_aprc, on_step=True, on_epoch=True)
         return loss
+
+    def translate_labels(self, label_vec):
+        target_names = ['Action', 'Adventure', 'Comedy', 'Crime', 'Documentary', 'Drama', 'Family',
+                        'Fantasy', 'History', 'Horror', 'Music', 'Mystery', 'Science Fiction', 'Thriller',  'War']
+        labels = []
+        for i, l in enumerate(label_vec):
+            if l:
+                labels.append(target_names[i])
+        return labels
 
     def validation_step(self, batch, batch_idx):
         target, data = batch
-        #target = self.label_tidy(target)
+        data = data.float()
+        # target = self.label_tidy(target)
+        grid = make_grid(data[0], nrow=10)
         data = self(data)
-        target = target.squeeze()
+        target = target.float()
         loss = self.criterion(data, target)
-        _data = data.detach().cpu()
-        _target = target.detach().cpu()
-        _data = nn.Sigmoid()(_data)
-        self.running_labels.append(_target)
-        self.running_logits.append(_data)
-        self.log("val/loss", loss, on_step=True, on_epoch=True, rank_zero_only=True)
+        target = target.int()
+        sig_data = F.sigmoid(data)
+        self.running_logits.append(sig_data)
+        self.running_labels.append(target)
+        format_target = self.translate_labels(target[0])
+        format_logits = self.translate_labels((sig_data[0] > 0.2).to(int))
+        images = wandb.Image(
+            grid, caption=f"predicted: {format_logits}, actual {format_target}")
+        self.logger.experiment.log({"examples": images})
+        self.val_auroc(data, target)
+        self.val_aprc(data, target)
+        # self.val_f1_2(data, target)
+        self.log("val/loss", loss, on_step=True, on_epoch=True)
+        self.log("val/auroc", self.val_auroc, on_step=True, on_epoch=True)
+        self.log("val/aprc", self.val_aprc, on_step=True, on_epoch=True)
         return loss
-  

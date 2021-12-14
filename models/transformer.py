@@ -24,7 +24,6 @@ class PositionalEncoding(pl.LightningModule):
         x = x + self.pe[:x.size(0), :]
         return self.dropout(x)
 
-
 class SimpleTransformer(pl.LightningModule):
     def __init__(self, **kwargs):
         super(SimpleTransformer, self).__init__()

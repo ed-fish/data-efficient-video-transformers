@@ -15,6 +15,7 @@ import pytorch_lightning as pl
 import json
 from sklearn.model_selection import train_test_split
 
+
 class MMXDataModule(pl.LightningDataModule):
 
     def __init__(self, train_data, val_data, config):
@@ -91,10 +92,10 @@ class MMXDataModule(pl.LightningDataModule):
         self.val_data = self.clean_data(self.val_data)
 
     def train_dataloader(self):
-        return DataLoader(MMXDataset(self.train_data, self.config, state="train"), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
+        return DataLoader(MMXDataset(self.train_data, self.config, state="train"), self.bs, shuffle=True, collate_fn=self.custom_collater, num_workers=5, drop_last=True)
 
     def val_dataloader(self):
-        return DataLoader(MMXDataset(self.val_data, self.config, state="val"), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=0, drop_last=True)
+        return DataLoader(MMXDataset(self.val_data, self.config, state="val"), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=5, drop_last=True)
 
     def test_dataloader(self):
         return DataLoader(MMXDataset(self.val_data, self.config, state="test"), self.bs, shuffle=False, collate_fn=self.custom_collater, drop_last=True)

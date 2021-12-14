@@ -1,15 +1,15 @@
 # General params
-batch_size: 2
-learning_rate: 0.00005
+batch_size: 10
+learning_rate: 0.000001
 epochs: 500
-seq_len: 20
-clip_len: 3
-frame_len: 3
+seq_len: 35
+clip_len: 1
+frame_len: 1
 
 # Optimisation
 dropout: 0.5
-momentum: 0.005
-weight_decay: 0.000005
+momentum: 0.9
+weight_decay: 0.00005
 scheduling: True
 warm_up: 2
 n_classes: 15
@@ -20,7 +20,7 @@ n_classes: 15
 input_dimension: 2048
 nhead: 2
 token_embedding: 305
-nlayers: 2
+nlayers: 4
 nhid: 1028
 projection_size: 305
 

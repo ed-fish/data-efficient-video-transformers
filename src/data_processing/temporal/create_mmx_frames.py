@@ -12,7 +12,6 @@ from collections import OrderedDict
 
 # first create a list of all the filepaths to go through and collect - do only on one thread. 
 
-
 def collect_labels(label):
     target_names = ['Action', 'Adventure', 'Comedy', 'Crime', 'Documentary', 'Drama', 'Family',
                     'Fantasy', 'History', 'Horror', 'Music', 'Mystery', 'Science Fiction', 'Thriller',  'War']
