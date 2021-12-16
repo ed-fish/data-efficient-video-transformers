@@ -79,8 +79,8 @@ def main():
 
     weights_init_normal(model)
 
-    trainer = pl.Trainer(gpus=[3], callbacks=callbacks,
-                         logger=wandb_logger, max_epochs=2000)
+    trainer = pl.Trainer(gpus=[0], callbacks=callbacks,
+                         logger=wandb_logger, accumulate_grad_batches=10, gradient_clip_val=0.5, max_epochs=2000)
     trainer.fit(model, datamodule=dm)
     # model = model.load_from_checkpoint(
     #     "trained_models/mmx/double/double-epoch=127-v1.ckpt", **config)

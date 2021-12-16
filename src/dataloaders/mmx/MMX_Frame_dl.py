@@ -55,10 +55,10 @@ class MMXFrameDataModule(pl.LightningDataModule):
         self.val_data = self.load_data(self.val_data)
 
     def train_dataloader(self):
-        return DataLoader(MMXFrameDataset(self.train_data, self.config, state="train"), self.bs,  shuffle=True, num_workers=10, drop_last=True)
+        return DataLoader(MMXFrameDataset(self.train_data, self.config, state="train"), self.bs,  shuffle=True, num_workers=15, drop_last=True)
 
     def val_dataloader(self):
-        return DataLoader(MMXFrameDataset(self.val_data, self.config, state="val"), self.bs, shuffle=False, num_workers=10, drop_last=True)
+        return DataLoader(MMXFrameDataset(self.val_data, self.config, state="val"), self.bs, shuffle=False, num_workers=15, drop_last=True)
 
     def test_dataloader(self):
         return DataLoader(MMXFrameDataset(self.val_data, self.config, state="test"), self.bs, shuffle=False, drop_last=True)
@@ -92,12 +92,22 @@ class MMXFrameDataset(Dataset):
                                  std=[0.229, 0.224, 0.225]),
         ])
 
+        self.transform_vid = transforms.Compose([
+            transforms.RandomResizedCrop(112),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=[0.43216, 0.394666, 0.37645], std=[0.22803, 0.22145, 0.216989]),
+        ])
+
     def __len__(self):
         return len(self.data_frame)
 
     def pil_loader(self, path):
         img = Image.open(path)
         img = img.convert('RGB')
+        return img
+
+    def img_trans(self, img):
         if self.state == "train":
             img = self.train_transform(img)
         else:
@@ -110,10 +120,12 @@ class MMXFrameDataset(Dataset):
         label = self.data_frame.at[idx, "label"]
         scenes = self.data_frame.at[idx, "scenes"]
         x = torch.empty([self.max_len, 3, 224, 224])
-        trailer_list = torch.full_like(x, 0)
+        vid = torch.empty([self.max_len, 10, 3, 112, 112])
+        img_list = torch.full_like(x, 0)
 
         # iterate through the scenes for the trailer
         # trailer_list = np.zeros((self.config["seq_len"], self.config["clip_len"], self.config["frame_len"], 3, 224, 224), dtype=float) # create empty array [0, 100]
+
         num_collected = 0
         for j, s in enumerate(scenes.values()):
             if num_collected == self.config["seq_len"]:
@@ -128,7 +140,13 @@ class MMXFrameDataset(Dataset):
                         clip = s["0"]
                     except:
                         continue
-            img_tensor = self.pil_loader(clip[0])
-            trailer_list[num_collected] = img_tensor
+
+            for i in range(10):
+                vid[num_collected][i] = self.transform_vid(
+                    self.pil_loader(clip[i]))
+            #img_t = self.img_trans(self.pil_loader(clip[0]))
+            #img_list[num_collected] = img_t
+            #img_list = []
             num_collected += 1
-        return label, trailer_list
+        # vid = vid.permute(0, 2, 1, 3, 4)
+        return label, img_list, vid

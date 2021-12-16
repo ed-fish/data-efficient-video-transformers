@@ -1,8 +1,8 @@
 # General params
-batch_size: 10
-learning_rate: 0.000001
+batch_size: 2
+learning_rate: 0.0000005
 epochs: 500
-seq_len: 35
+seq_len: 15
 clip_len: 1
 frame_len: 1
 

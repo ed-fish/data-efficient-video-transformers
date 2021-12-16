@@ -57,6 +57,24 @@ class ImgResNet(pl.LightningModule):
         return representations
 
 
+class VidResNet(pl.LightningModule):
+    def __init__(self):
+        super(VidResNet, self).__init__()
+        self.backbone = models.video.r2plus1d_18(pretrained=True)
+        num_filters = self.backbone.fc.in_features
+        self.backbone.fc = nn.Sequential(nn.Linear(num_filters, 896))
+
+    def forward(self, x):
+        representations = self.backbone(x)
+        return representations
+
+
+# class LocationResNet(pl.LightningDataModule):
+#     def __init__(self):
+#         super(LocationResNet, self).__init__()
+#         self.backbone =
+
+
 class FrameTransformer(pl.LightningModule):
     def __init__(self, **kwargs):
         super(FrameTransformer, self).__init__()
@@ -67,26 +85,28 @@ class FrameTransformer(pl.LightningModule):
         self.position_encoder = PositionalEncoding(
             896, 0.5,
             max_len=50)
-        self.img_model = ImgResNet()
+        #self.img_model = ImgResNet()
+        self.vid_model = VidResNet()
         # self.cls_token = nn.Parameter(
         #     torch.randn(1, 1, self.hparams.input_dimension))
         self.scene_transformer = TransformerBase(896, 896, 8, 896, 8, 0.6)
         self.running_labels = []
         self.running_logits = []
         self.img_cls = nn.Parameter(torch.rand(1, 3, 224, 224))
+        self.vid_cls = nn.Parameter(torch.rand(1, 10, 3, 112, 112))
         self.mlp_head = nn.Sequential(nn.LayerNorm(896), nn.Linear(896, 15))
-        self.decoder = nn.Sequential(nn.Linear(75, 32), nn.GELU(), nn.Dropout(
-            0.5), nn.Linear(32, 32), nn.GELU(), nn.Linear(32, 15))
-        self.encoder = nn.Sequential(nn.Linear(256, 256), nn.Dropout(0.5))
+        # self.decoder = nn.Sequential(nn.Linear(75, 32), nn.GELU(), nn.Dropout(
+        # 0.5), nn.Linear(32, 32), nn.GELU(), nn.Linear(32, 15))
+        # self.encoder = nn.Sequential(nn.Linear(256, 256), nn.Dropout(0.5))
         self.running_logits = []
         self.running_labels = []
         self.val_auroc = AUROC(num_classes=15)
         self.train_auroc = AUROC(num_classes=15)
         self.train_aprc = AveragePrecision(num_classes=15)
         self.norm = nn.LayerNorm(896)
-        self.tpn = TPN()
+        # self.tpn = TPN()
         self.val_aprc = AveragePrecision(num_classes=15)
-        self.pool = nn.AdaptiveAvgPool2d((1, 15))
+        # self.pool = nn.AdaptiveAvgPool2d((1, 15))
 
     def configure_optimizers(self):
         # optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.learning_rate,
@@ -99,12 +119,38 @@ class FrameTransformer(pl.LightningModule):
         # ), lr=self.hparams.learning_rate, weight_decay=self.hparams.weight_decay)
         return optimizer
 
-    def forward(self, data):
+    def forward(self, img, vid):
         total = []
+        #out_img = self.img_step(img)
+        output = self.vid_step(vid)
         # d = data.squeeze(0)
         # img_embedding = self.img_model(d) #imgs channel width height
         # data = [2, 50, 3, 224, 224]
         # cls = [2, 50, 3, 224, 224]
+        return output
+
+    def vid_step(self, data):
+        total = []
+        for d in range(len(data)):
+            cls_d = torch.cat((self.vid_cls, data[d]), dim=0)
+            total.append(cls_d)
+        data = torch.stack(total)
+        data = data.view(-1, 10, 3,  112, 112)
+        data = data.permute(0, 2, 1, 3, 4)
+        data = self.vid_model(data)
+        data = data.view(self.hparams.batch_size, self.hparams.seq_len, -1)
+        data = data.permute(1, 0, 2)
+        data = self.position_encoder(data)
+        data = self.scene_transformer(data)
+        data = data.permute(1, 0, 2)
+        output = data[:, 0]
+
+        print("just cls", output.shape)
+        output = self.mlp_head(output)
+        return output
+
+    def img_step(self, data):
+        total = []
         for d in range(len(data)):
             cls_d = torch.cat((data[d], self.img_cls), dim=0)
             total.append(cls_d)
@@ -118,19 +164,19 @@ class FrameTransformer(pl.LightningModule):
         img_seq = data.permute(1, 0, 2)
         img_seq = self.norm(img_seq)
         img_seq = img_seq.permute(1, 0, 2)
-        img_seq = self.scene_transformer(data)
+        img_seq = self.scene_transformer(img_seq)
         img_seq = img_seq.permute(1, 0, 2)
         output = img_seq[:, 0]
         output = self.mlp_head(output)
-
         return output
 
     def training_step(self, batch, batch_idx):
-        target, data = batch
-        data = data.float()
+        target, img, vid = batch
+        #img = img.float()
+        vid = vid.float()
         # target = self.label_tidy(target)
         # save_image(grid, "test.png")
-        data = self(data)
+        data = self(img, vid)
         target = target.float()
         loss = self.criterion(data, target)
         target = target.int()
@@ -151,11 +197,14 @@ class FrameTransformer(pl.LightningModule):
         return labels
 
     def validation_step(self, batch, batch_idx):
-        target, data = batch
-        data = data.float()
+
+        target, img, vid = batch
+        #img = img.float()
+        vid = vid.float()
+
         # target = self.label_tidy(target)
-        grid = make_grid(data[0], nrow=10)
-        data = self(data)
+        #grid = make_grid(data[0], nrow=10)
+        data = self(img, vid)
         target = target.float()
         loss = self.criterion(data, target)
         target = target.int()
@@ -164,9 +213,9 @@ class FrameTransformer(pl.LightningModule):
         self.running_labels.append(target)
         format_target = self.translate_labels(target[0])
         format_logits = self.translate_labels((sig_data[0] > 0.2).to(int))
-        images = wandb.Image(
-            grid, caption=f"predicted: {format_logits}, actual {format_target}")
-        self.logger.experiment.log({"examples": images})
+        # images = wandb.Image(
+        #     grid, caption=f"predicted: {format_logits}, actual {format_target}")
+        # self.logger.experiment.log({"examples": images})
         self.val_auroc(data, target)
         self.val_aprc(data, target)
         # self.val_f1_2(data, target)

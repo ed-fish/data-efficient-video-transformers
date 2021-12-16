@@ -45,17 +45,22 @@ class TransformerEval(Callback):
             #pl_module.log(f"{state}/online/recall@{str(threshold)}", recall, on_epoch=True)
             #pl_module.log(f"{state}/online/precision@{str(threshold)}", precision, on_epoch=True)
             #pl_module.log(f"{state}/online/avg_precision@{str(threshold)}", avg_precision, on_epoch=True)
-            
-        aprc = average_precision_score(running_labels.to(int), running_logits, average="samples")
+
+        aprc = average_precision_score(running_labels.to(
+            int), running_logits, average="samples")
         pl_module.log("sklearn apr", aprc)
+
+        aprc = average_precision_score(running_labels.to(
+            int), running_logits, average="weighted")
+        pl_module.log("sklearn apr weighted", aprc)
 
         pl_module.running_labels = []
         pl_module.running_logits = []
-        
 
         label_str = []
         target_str = []
-        
+
+
 class MITEval(Callback):
     def __init__(self):
         self.best_acc = 0
