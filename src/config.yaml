@@ -1,8 +1,8 @@
 # General params
-batch_size: 10
-learning_rate: 0.0005
+batch_size: 2
+learning_rate: 0.0000005
 epochs: 500
-seq_len: 30
+seq_len: 15
 clip_len: 1
 frame_len: 1
 
@@ -24,14 +24,14 @@ nlayers: 4
 nhid: 1028
 projection_size: 305
 
-data_set: "mmx"
+data_set: "mmx-frame"
 # double_transformer, single_transformer, lstm
-model: "simple_transformer"
+model: "frame_transformer"
 logger: "double_transformer"
 name: "mmx-frame-test"
 
 #experts: ["test-video-embeddings", "test-location-embeddings", "test-img-embeddings", "audio-embeddings"]
-experts: ["img-embeddings", "location-embeddings"]
+experts: ["img-embeddings", "location-embeddings", "video-embeddings"]
 # experts: ["location-embeddings", "img-embeddings", "video-embeddings", "audio-embeddings"]
 # pool or None
 cls: 1

@@ -93,7 +93,6 @@ class MMXFrameDataset(Dataset):
         ])
 
         self.transform_vid = transforms.Compose([
-            transforms.Resize(200),
             transforms.RandomResizedCrop(112),
             transforms.ToTensor(),
             transforms.Normalize(

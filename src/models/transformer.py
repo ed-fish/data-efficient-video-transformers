@@ -38,13 +38,13 @@ class SimpleTransformer(pl.LightningModule):
             self.hparams.seq_len += 1
         self.criterion = nn.CrossEntropyLoss()
         self.position_encoder = PositionalEncoding(
-            self.hparams.input_dimension, self.hparams.dropout,
+            self.hparams.input_dimension//2, self.hparams.dropout,
             max_len=self.hparams.seq_len)
         self.encoder_layers = TransformerEncoderLayer(
-            self.hparams.input_dimension, self.hparams.nhead, self.hparams.nhid, self.hparams.dropout)
+            self.hparams.input_dimension//2, self.hparams.nhead, self.hparams.nhid, self.hparams.dropout)
         self.transformer_encoder = TransformerEncoder(
             self.encoder_layers, self.hparams.nlayers)
-        self.norm = nn.LayerNorm(self.hparams.input_dimension)
+        self.norm = nn.LayerNorm(self.hparams.input_dimension//2)
         # self.cls_token = nn.Parameter(
         #     torch.randn(1, 1, self.hparams.input_dimension))
 
@@ -68,53 +68,60 @@ class SimpleTransformer(pl.LightningModule):
         self.cat_classifier = nn.Sequential(
             nn.Linear(len(self.hparams.experts) * 305, 305)
         )
-        self.cls = nn.Parameter(torch.rand(
-            self.hparams.seq_len, self.hparams.batch_size, 2048))
-
-        self.mlp_head = nn.Sequential(nn.LayerNorm(2048), nn.Linear(2048, 15))
 
     def configure_optimizers(self):
-        # optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.learning_rate,
-        #                             momentum=self.hparams.momentum, weight_decay=self.hparams.weight_decay)
+        optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.learning_rate,
+                                    momentum=self.hparams.momentum, weight_decay=self.hparams.weight_decay)
 
-        optimizer = torch.optim.AdamW(self.parameters(
-        ), lr=self.hparams.learning_rate, weight_decay=self.hparams.weight_decay)
+        # optimizer = torch.optim.AdamW(self.parameters(
+        # ), lr=self.hparams.learning_rate, weight_decay=self.hparams.weight_decay)
         return optimizer
 
     def forward(self, src):
+        src = self.expert_encoder(src)
+        src = src * math.sqrt(self.hparams.input_dimension//2)
+        src = self.position_encoder(src)
+        # src = self.norm(src)
         output = self.transformer_encoder(src)
         return output
+ 
+    def post_transformer(self, data):
+        data = torch.stack(data)
+        data = data.transpose(0, 1) # b, expert, seq, data -> expert, b, seq, data
+        if self.hparams.cls:
+            collab_array = [torch.rand(1, 2048).to(self.device)]
+        else:
+            collab_array = []
+        data = data.squeeze()
+        
+        for x in range(len(self.hparams.experts)):
+            d = data[x, :, :, :]
+            d = self.shared_step(d) # d = batch, seq, embeddings
+            # d = rearrange(d, 'b s e -> s b e')
+            collab_array.append(d)  
+        stacked_array = torch.stack(collab_array)
+        # stacked_array = self.pos_encoder(stacked_array)
+        # stacked_array = stacked_array.transpose(0, 1)
+        # src_mask = self.generate_square_subsequent_mask(stacked_array.size(0))
+        # src_mask = src_mask.to(self.device)
+        data = self.post_transformer_encoder(stacked_array)
+        data = data.transpose(0, 1)
+        data = data.reshape(self.hparams.batch_size, -1)
+#        self.running_embeds.append(data)
+        # output = self.decoder(data)
 
-    def add_pos_cls(self, data):
-        # input is expert, batch, sequence, dimension
-        data = self.position_encoder(data)
-        data = torch.cat((self.cls, data))
-        return data
-
-    def ptn(self, data):
-        # data input (BATCH, SEQ, EXPERTS, DIM)
-        # experts batch sequence dimension
-        expert_array = []
-        data = rearrange(data, 'b s e d -> e b s d')
-        for expert in data:
-            # experts sequence batch dimension
-            e = rearrange(expert, 'b s d -> s b d')
-            e = self.add_pos_cls(e)  # s b d (s > seq len)
-            e = self(e)
-            e = e[0]
-            expert_array.append(e)
-        expert_array = torch.stack(expert_array)  # elen b d
-        expert_array = self.add_pos_cls(expert_array)
-        ptn_out = self(expert_array)
-        ptn_out = ptn_out[0]
-        ptn_out = self.mlp_head(ptn_out)
-        return ptn_out
+        transform_t = self.cat_classifier(data)
+        pooled_result = transform_t.squeeze(0)
+        return pooled_result
 
     def training_step(self, batch, batch_idx):
+
         data = batch["experts"]
         target = batch["label"]
-        data = self.ptn(data)
-        #target = self.format_target(target)
+        #data = self.shared_step(data)
+        data = self.post_transformer(data)
+        target = self.format_target(target)
+        #target = target.float()
         loss = self.criterion(data, target)
         self.log("train/loss", loss, on_step=True, on_epoch=True)
 
@@ -123,16 +130,49 @@ class SimpleTransformer(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         data = batch["experts"]
         target = batch["label"]
-        data = self.ptn(data)
-        #target = self.format_target(target)
+        # data = self.shared_step(data)
+        data = self.post_transformer(data)
+        target = self.format_target(target)
+        # target = target.float()
+        # target = torch.argmax(target, dim=-1)
         loss = self.criterion(data, target)
-        target = target.int()
-        sig_data = F.sigmoid(data)
-        self.running_logits.append(sig_data)
+        # acc_preds = self.preds_acc(data)
+        data = data.detach()
+        data = F.softmax(data, dim=-1)
+        data = torch.argmax(data, dim=-1)
         self.running_labels.append(target)
+        self.running_logits.append(data)
+        self.log("val/loss", loss, on_step=False, on_epoch=True)
         return loss
+
+    def shared_step(self, data):
+        # data = torch.stack(data)
+        # data = torch.cat(data, dim=0)
+        # data = data.squeeze()
+
+        data = rearrange(data, 'b s e -> s b e')
+        # FORWARD
+        output = self(data)
+        # print("output step 1:", output.shape)
+        # reshape back to original (S, B, E) -> (B, S, E)
+
+        if self.hparams.cls:
+            output = output[0]
+            print(output.shape)
+        output = rearrange(output, 's b e -> b s e')
+        output = rearrange(output, 'b s e -> b (s e)')
+        print(output.shape)
+        # output = torch.mean(output, dim=1)
+        output = self.classifier(output)
+        #output = torch.sigmoid(output)
+        #output = F.softmax(output, dim=-1)
+        # print(output[0])
+        #output = torch.argmax(output, dim=-1)
+        # print(output[0])
+        return output
 
     def format_target(self, target):
         target = torch.cat(target, dim=0)
         target = target.squeeze()
         return target
+
