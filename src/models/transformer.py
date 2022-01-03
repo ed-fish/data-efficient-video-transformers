@@ -33,8 +33,7 @@ class SimpleTransformer(pl.LightningModule):
         if self.hparams.cls:
             self.hparams.seq_len += 1
         self.criterion = nn.BCEWithLogitsLoss()
-        self.position_encoder = PositionalEncoding(
-            2048, self.hparams.dropout,
+        self.position_encoder = PositionalEncoding(2048, self.hparams.dropout,
             max_len=self.hparams.seq_len)
 
         self.encoder_layers0 = TransformerEncoderLayer(
@@ -57,14 +56,18 @@ class SimpleTransformer(pl.LightningModule):
             nn.LayerNorm(2048), nn.Linear(2048, 1024))
 
     def configure_optimizers(self):
-        # optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.learning_rate,
-        #                             momentum=self.hparams.momentum, weight_decay=self.hparams.weight_decay)
+        optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.learning_rate,
+                                    momentum=self.hparams.momentum, weight_decay=self.hparams.weight_decay)
 
-        optimizer = torch.optim.AdamW(self.parameters(
-        ), lr=self.hparams.learning_rate, weight_decay=self.hparams.weight_decay)
+        # optimizer = torch.optim.AdamW(self.parameters(
+        # ), lr=self.hparams.learning_rate, weight_decay=self.hparams.weight_decay)
         return optimizer
 
     def forward(self, src):
+        src = self.expert_encoder(src)
+        src = src * math.sqrt(self.hparams.input_dimension//2)
+        src = self.position_encoder(src)
+        # src = self.norm(src)
         output = self.transformer_encoder(src)
         return output
 
@@ -130,8 +133,10 @@ class SimpleTransformer(pl.LightningModule):
         return ptn_out
 
     def training_step(self, batch, batch_idx):
+
         data = batch["experts"]
         target = batch["label"]
+
         data = self.shared_step(data)
         #target = self.format_target(target)
         loss = self.criterion(data, target)
@@ -148,7 +153,10 @@ class SimpleTransformer(pl.LightningModule):
         target = target.int()
         sig_data = F.sigmoid(data)
         self.running_logits.append(sig_data)
+
         self.running_labels.append(target)
+        self.running_logits.append(data)
+        self.log("val/loss", loss, on_step=False, on_epoch=True)
         return loss
 
     def shared_step(self, data):
@@ -159,7 +167,9 @@ class SimpleTransformer(pl.LightningModule):
             data = self.ptn(data)
             return data
 
+
     def format_target(self, target):
         target = torch.cat(target, dim=0)
         target = target.squeeze()
         return target
+

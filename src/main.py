@@ -29,6 +29,7 @@ def main():
     wandb_logger = WandbLogger(
         project=config["logger"])
 
+
     if config["model"] == "ptn" or config["model"] == "ptn_shared":
         model = SimpleTransformer(**config)
     elif config["model"] == "lstm":
@@ -47,8 +48,8 @@ def main():
 
     elif config["data_set"] == "mmx":
         transformer_callback = TransformerEval()
-        dm = MMXDataModule("data/mmx/temporal/mmx_train_temporal.pkl",
-                           "data/mmx/temporal/mmx_val_temporal.pkl", config)
+        dm = MMXDataModule("data/mmx/mmx_train_temporal.pkl",
+                           "data/mmx/mmx_val_temporal.pkl", config)
         callbacks = [transformer_callback]
         # checkpoint = ModelCheckpoint(
         #     save_top_k=-1, dirpath="trained_models/mmx/double", filename="double-{epoch:02d}")
@@ -77,10 +78,10 @@ def main():
         # m.bias.data should be 0
             m.bias.data.fill_(0)
 
-    # weights_init_normal(model)
+    weights_init_normal(model)
 
-    trainer = pl.Trainer(gpus=[0], callbacks=callbacks,
-                         logger=wandb_logger, accumulate_grad_batches=32, max_epochs=2000)
+    trainer = pl.Trainer(gpus=[0], callbacks=callbacks,logger=wandb_logger, accumulate_grad_batches=32, max_epochs=2000)
+
     trainer.fit(model, datamodule=dm)
     # model = model.load_from_checkpoint(
     #     "trained_models/mmx/double/double-epoch=127-v1.ckpt", **config)

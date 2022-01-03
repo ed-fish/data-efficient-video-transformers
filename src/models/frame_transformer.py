@@ -89,7 +89,7 @@ class FrameTransformer(pl.LightningModule):
         self.vid_model = VidResNet()
         # self.cls_token = nn.Parameter(
         #     torch.randn(1, 1, self.hparams.input_dimension))
-        self.scene_transformer = TransformerBase(896, 896, 2, 896, 2, 0.4)
+        self.scene_transformer = TransformerBase(896, 896, 8, 896, 8, 0.6)
         self.running_labels = []
         self.running_logits = []
         self.img_cls = nn.Parameter(torch.rand(1, 3, 224, 224))
@@ -132,13 +132,12 @@ class FrameTransformer(pl.LightningModule):
     def vid_step(self, data):
         total = []
         for d in range(len(data)):
-            cls_d = torch.cat((data[d], self.vid_cls), dim=0)
+            cls_d = torch.cat((self.vid_cls, data[d]), dim=0)
             total.append(cls_d)
         data = torch.stack(total)
         data = data.view(-1, 10, 3,  112, 112)
         data = data.permute(0, 2, 1, 3, 4)
         data = self.vid_model(data)
-        print("data", data.shape)
         data = data.view(self.hparams.batch_size, self.hparams.seq_len, -1)
         data = data.permute(1, 0, 2)
         data = self.position_encoder(data)
@@ -206,7 +205,6 @@ class FrameTransformer(pl.LightningModule):
         # target = self.label_tidy(target)
         #grid = make_grid(data[0], nrow=10)
         data = self(img, vid)
-        data = torch.nan_to_num(data)
         target = target.float()
         loss = self.criterion(data, target)
         target = target.int()

@@ -1,17 +1,24 @@
+import glob
 import pandas as pd
+import ast
+import random
+import csv
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import _pickle as pickle
+import os
 import numpy as np
 from collections import defaultdict
 from torch.utils.data import Dataset, random_split, DataLoader
 import pytorch_lightning as pl
+import json
 from sklearn.model_selection import train_test_split
 import random
 
 
 class MMXDataModule(pl.LightningDataModule):
+
     def __init__(self, train_data, val_data, config):
         super().__init__()
         self.train_data = train_data
@@ -28,11 +35,16 @@ class MMXDataModule(pl.LightningDataModule):
             'path': [x["path"] for x in batch]
         }
 
+    # def prepare_data(self):
+    #    data = self.load_data(self.pickle_file)
+    #    self.data = self.clean_data(data)
+
     def clean_data(self, data_frame):
         target_names = ['Action', 'Adventure', 'Comedy', 'Crime', 'Documentary', 'Drama', 'Family',
                         'Fantasy', 'History', 'Horror', 'Music', 'Mystery', 'Science Fiction', 'Thriller',  'War']
 
         print("cleaning data")
+        print(data_frame.describe())
 
         longest_seq = 0
         for i in range(len(data_frame)):
@@ -87,7 +99,7 @@ class MMXDataModule(pl.LightningDataModule):
         return DataLoader(MMXDataset(self.val_data, self.config, state="val"), self.bs, shuffle=False, num_workers=15, drop_last=True)
 
     def test_dataloader(self):
-        return DataLoader(MMXDataset(self.val_data, self.config, state="test"), self.bs, shuffle=False, drop_last=True)
+        return DataLoader(MMXDataset(self.val_data, self.config, state="test"), self.bs, shuffle=False, collate_fn=self.custom_collater, drop_last=True)
 
 
 class MMXDataset(Dataset):
@@ -124,9 +136,9 @@ class MMXDataset(Dataset):
         return tensor
 
     def return_expert_path(self, path, expert):
-        ex = expert
         if self.state == "val":
             expert = "test-" + expert
+
         try:
             scene_list = path[list(path.keys())[0]][expert]
         except KeyError:
@@ -138,11 +150,11 @@ class MMXDataset(Dataset):
             scene_list = False
         except FileNotFoundError:
             scene_list = False
-
         return scene_list
 
     def retrieve_tensors(self, path, expert):
         tensor_paths = self.return_expert_path(path, expert)
+
         if tensor_paths:
             if expert == "img-embeddings" or expert == "location-embeddings":
                 tensor_paths = tensor_paths[-1]
@@ -177,30 +189,68 @@ class MMXDataset(Dataset):
     def multi_model_item_collection(self, scene_path):
         expert_tensor_list = []
         for expert in self.config["experts"]:
-            t = self.retrieve_tensors(scene_path, expert)
+            if self.config["mixing_method"] == "concat-norm":
+                t = F.normalize(self.retrieve_tensors(
+                    scene_path, expert), p=2, dim=-1)
+            else:
+                t = self.retrieve_tensors(scene_path, expert)
             # Retrieve the tensors for each expert.
             expert_tensor_list.append(t)
-        return torch.stack(expert_tensor_list)
+        if self.config["mixing_method"] == "concat":
+            # concat experts for pre model
+            cat_experts = torch.cat(expert_tensor_list, dim=-1)
+            # expert_list.append(cat_experts)
+            if self.config["cat_norm"] == True:
+                cat_experts = F.normalize(
+                    cat_experts, p=2, dim=-1)
+            if self.config["cat_softmax"] == True:
+                cat_experts = F.softmax(cat_experts, dim=-1)
+            expert_list.append(cat_experts)
+        elif self.config["mixing_method"] == "collab" or self.config["mixing_method"] == "post_collab":
+            expert_list.append(torch.stack(expert_tensor_list))
 
     def __getitem__(self, idx):
+
         # retrieve labels
         label = self.data_frame.at[idx, "label"]
         label = self.label_tidy(label)
         path = self.data_frame.at[idx, "path"]
-        label = torch.tensor(label)    # Covert label to tensor
+        label = torch.tensor(label).unsqueeze(0)    # Covert label to tensor
         scenes = self.data_frame.at[idx, "scenes"]
-        # iterate through the scenes for the trailer
         expert_list = []
+
+        # iterate through the scenes for the trailer
+
         for d in scenes.values():
             if len(expert_list) < self.seq_len:  # collect tensors until sequence length
-                expert_list.append(self.multi_model_item_collection(d))
+                expert_tensor_list = []
+                # otherwise return one expert
+                try:
+                    tensor = self.retrieve_tensors(
+                        d, self.config["experts"][0])
+                except IndexError:
+                    continue
+                except KeyError:
+                    print("key error", d)
+                    continue
+                except IsADirectoryError:
+                    continue
+                expert_list.append(tensor)
 
-        while len(expert_list) < self.seq_len:
-            pad_list = []
-            expert_list.append(torch.zeros_like(expert_list[0]))
-        # -> seq len, expert len, dim
-        expert_list = torch.stack(expert_list)
-        # expert_list = torch.cat(expert_list, dim=0)  # scenes
-        expert_list = expert_list.squeeze()
+        if self.config["mixing_method"] == "collab" or self.config["mixing_method"] == "post_collab":
+            while len(expert_list) < self.seq_len:
+                pad_list = []
+                for i in range(len(self.config["experts"])):
+                    pad_list.append(torch.zeros_like(expert_list[0][0]))
+                expert_list.append(torch.stack(pad_list))
+            if self.config["mixing_method"] == "post_collab":
+                expert_list = torch.stack(expert_list)
+            expert_list = expert_list.squeeze()
+        else:
+            while len(expert_list) < self.seq_len:
+                expert_list.append(torch.zeros_like(expert_list[0]))
+
+            expert_list = torch.cat(expert_list, dim=0)  # scenes
+            expert_list = expert_list.unsqueeze(0)
 
         return {"label": label, "path": path, "experts": expert_list}
