@@ -14,6 +14,7 @@ from torch.utils.data import Dataset, random_split, DataLoader
 import pytorch_lightning as pl
 import json
 from sklearn.model_selection import train_test_split
+import random
 
 
 class MMXDataModule(pl.LightningDataModule):
@@ -81,7 +82,7 @@ class MMXDataModule(pl.LightningDataModule):
         data_frame = pd.DataFrame(data)
         print("data loaded")
         print("length", len(data_frame))
-        data_frame = data_frame.head(1000)
+        #data_frame = data_frame.head(1000)
         return data_frame
 
     def setup(self, stage):
@@ -92,10 +93,10 @@ class MMXDataModule(pl.LightningDataModule):
         self.val_data = self.clean_data(self.val_data)
 
     def train_dataloader(self):
-        return DataLoader(MMXDataset(self.train_data, self.config, state="train"), self.bs, shuffle=True, collate_fn=self.custom_collater, num_workers=5, drop_last=True)
+        return DataLoader(MMXDataset(self.train_data, self.config, state="train"), self.bs, shuffle=True, num_workers=15, drop_last=True)
 
     def val_dataloader(self):
-        return DataLoader(MMXDataset(self.val_data, self.config, state="val"), self.bs, shuffle=False, collate_fn=self.custom_collater, num_workers=5, drop_last=True)
+        return DataLoader(MMXDataset(self.val_data, self.config, state="val"), self.bs, shuffle=False, num_workers=15, drop_last=True)
 
     def test_dataloader(self):
         return DataLoader(MMXDataset(self.val_data, self.config, state="test"), self.bs, shuffle=False, collate_fn=self.custom_collater, drop_last=True)
@@ -137,29 +138,47 @@ class MMXDataset(Dataset):
     def return_expert_path(self, path, expert):
         if self.state == "val":
             expert = "test-" + expert
-        scene_list = path[list(path.keys())[0]][expert]
+
+        try:
+            scene_list = path[list(path.keys())[0]][expert]
+        except KeyError:
+            try:
+                scene_list = path[list(path.keys())[0]][ex]
+            except KeyError:
+                scene_list = False
+        except IndexError:
+            scene_list = False
+        except FileNotFoundError:
+            scene_list = False
         return scene_list
 
     def retrieve_tensors(self, path, expert):
         tensor_paths = self.return_expert_path(path, expert)
-        if expert == "img-embeddings" or expert == "location-embeddings":
-            tensor_paths = tensor_paths[self.config["frame_id"]]
-        if self.config["frame_agg"] == "none":
-            t = self.load_tensor(tensor_paths)
-            if expert == "audio-embeddings":
-                t = t.unsqueeze(0)
-        elif self.config["frame_agg"] == "pool":
-            pool_list = [self.load_tensor(x) for x in tensor_paths]
-            pool_list = torch.stack(pool_list, dim=-1)
-            pool_list = pool_list.unsqueeze(0)
-            pooled_tensor = F.adaptive_avg_pool2d(
-                pool_list, (1, self.config["input_shape"]), dim=-1)
-            t = pooled_tensor.squeeze(0)
-        if self.config["mixing_method"] == "post_collab":
+
+        if tensor_paths:
+            if expert == "img-embeddings" or expert == "location-embeddings":
+                tensor_paths = tensor_paths[-1]
+                try:
+                    t = self.load_tensor(tensor_paths)
+                except FileNotFoundError:
+                    t = torch.zeros((1, 2048))
+                if expert == "audio-embeddings":
+                    t = t.unsqueeze(0)
             if t.shape[-1] != 2048:
                 # zero pad dimensions.
                 t = nn.ConstantPad1d((0, 2048 - t.shape[-1]), 0)(t)
+        else:
+            t = torch.zeros((1, 2048))
+        if self.state == "train":
+            t = self.add_transforms(t)
         return t
+
+    def add_transforms(self, x):
+        if random.random() < 0.3:
+            x = torch.zeros((1, 2048))
+        if random.random() < 0.3:
+            x = x + (0.1**0.5)*torch.randn(1, 2048)
+        return x
 
     def label_tidy(self, label):
         if len(label) == 2:

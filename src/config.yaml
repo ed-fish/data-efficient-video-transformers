@@ -1,15 +1,17 @@
 # General params
 batch_size: 2
+
 learning_rate: 0.0000005
 epochs: 500
 seq_len: 15
+
 clip_len: 1
 frame_len: 1
 
 # Optimisation
-dropout: 0.5
-momentum: 0.9
-weight_decay: 0.00005
+dropout: 0.7
+momentum: 0.005
+weight_decay: 0.05
 scheduling: True
 warm_up: 2
 n_classes: 15
@@ -18,14 +20,16 @@ n_classes: 15
 # Architecure optimisation
 
 input_dimension: 2048
-nhead: 2
+nhead: 8
 token_embedding: 305
-nlayers: 4
-nhid: 1028
+nlayers: 8
+nhid: 2048
 projection_size: 305
 
 data_set: "mmx-frame"
-# double_transformer, single_transformer, lstm
+
+# double_transformer, single_transformer, lstm, frame_transformer
+
 model: "frame_transformer"
 logger: "double_transformer"
 name: "mmx-frame-test"
