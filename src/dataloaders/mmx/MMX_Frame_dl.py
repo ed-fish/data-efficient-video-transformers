@@ -47,7 +47,7 @@ class MMXFrameDataModule(pl.LightningDataModule):
         data_frame = pd.DataFrame(data)
         data_frame = data_frame.reset_index(drop=True)
         print("length of data", len(data_frame))
-        #data_frame = data_frame.head(1000)
+        #data_frame = data_frame.head(2000)
         return data_frame
 
     def setup(self, stage):
@@ -94,7 +94,8 @@ class MMXFrameDataset(Dataset):
 
         self.transform_vid = transforms.Compose([
             transforms.Resize(200),
-            transforms.RandomResizedCrop(112),
+            transforms.CenterCrop(112),
+            # transforms.RandomResizedCrop(112),
             transforms.ToTensor(),
             transforms.Normalize(
                 mean=[0.43216, 0.394666, 0.37645], std=[0.22803, 0.22145, 0.216989]),
@@ -121,8 +122,9 @@ class MMXFrameDataset(Dataset):
         label = self.data_frame.at[idx, "label"]
         scenes = self.data_frame.at[idx, "scenes"]
         x = torch.empty([self.max_len, 3, 224, 224])
-        vid = torch.empty([self.max_len, 10, 3, 112, 112])
-        img_list = torch.full_like(x, 0)
+        v = torch.empty([self.max_len, 10, 3, 112, 112])
+        img_list = torch.full_like(x, 0.00001)
+        vid = torch.full_like(v, 0)
 
         # iterate through the scenes for the trailer
         # trailer_list = np.zeros((self.config["seq_len"], self.config["clip_len"], self.config["frame_len"], 3, 224, 224), dtype=float) # create empty array [0, 100]
