@@ -47,7 +47,7 @@ class MMXFrameDataModule(pl.LightningDataModule):
         data_frame = pd.DataFrame(data)
         data_frame = data_frame.reset_index(drop=True)
         print("length of data", len(data_frame))
-        data_frame = data_frame.head(3000)
+        data_frame = data_frame.head(2000)
         return data_frame
 
     def setup(self, stage):
@@ -145,11 +145,12 @@ class MMXFrameDataset(Dataset):
                     except:
                         continue
 
-            for i in range(12):
-                vid[num_collected][i] = self.transform_vid(
-                    self.pil_loader(clip[i]))
-            #img_t = self.img_trans(self.pil_loader(clip[0]))
-            #img_list[num_collected] = img_t
+            if self.config["model"] == "sum":
+                for i in range(12):
+                    vid[num_collected][i] = self.transform_vid(
+                        self.pil_loader(clip[i]))
+            img_t = self.img_trans(self.pil_loader(clip[0]))
+            img_list[num_collected] = img_t
             #img_list = []
             num_collected += 1
         # vid = vid.permute(0, 2, 1, 3, 4)
