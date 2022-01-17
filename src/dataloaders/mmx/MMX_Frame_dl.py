@@ -47,7 +47,7 @@ class MMXFrameDataModule(pl.LightningDataModule):
         data_frame = pd.DataFrame(data)
         data_frame = data_frame.reset_index(drop=True)
         print("length of data", len(data_frame))
-        #data_frame = data_frame.head(2000)
+        data_frame = data_frame.head(3000)
         return data_frame
 
     def setup(self, stage):
@@ -55,10 +55,10 @@ class MMXFrameDataModule(pl.LightningDataModule):
         self.val_data = self.load_data(self.val_data)
 
     def train_dataloader(self):
-        return DataLoader(MMXFrameDataset(self.train_data, self.config, state="train"), self.bs,  shuffle=True, num_workers=15, drop_last=True)
+        return DataLoader(MMXFrameDataset(self.train_data, self.config, state="train"), self.bs,  shuffle=True, num_workers=40, drop_last=True)
 
     def val_dataloader(self):
-        return DataLoader(MMXFrameDataset(self.val_data, self.config, state="val"), self.bs, shuffle=False, num_workers=15, drop_last=True)
+        return DataLoader(MMXFrameDataset(self.val_data, self.config, state="val"), self.bs, shuffle=False, num_workers=40, drop_last=True)
 
     def test_dataloader(self):
         return DataLoader(MMXFrameDataset(self.val_data, self.config, state="test"), self.bs, shuffle=False, drop_last=True)
@@ -94,7 +94,7 @@ class MMXFrameDataset(Dataset):
 
         self.transform_vid = transforms.Compose([
 
-            transforms.Resize(200),
+            transforms.Resize(120),
             transforms.CenterCrop(112),
             # transforms.RandomResizedCrop(112),
             transforms.ToTensor(),
@@ -123,8 +123,8 @@ class MMXFrameDataset(Dataset):
         label = self.data_frame.at[idx, "label"]
         scenes = self.data_frame.at[idx, "scenes"]
         x = torch.empty([self.max_len, 3, 224, 224])
-        v = torch.empty([self.max_len, 10, 3, 112, 112])
-        img_list = torch.full_like(x, 0.00001)
+        v = torch.empty([self.max_len, 12, 3, 112, 112])
+        img_list = torch.full_like(x, 0)
         vid = torch.full_like(v, 0)
 
         # iterate through the scenes for the trailer
@@ -145,7 +145,7 @@ class MMXFrameDataset(Dataset):
                     except:
                         continue
 
-            for i in range(10):
+            for i in range(12):
                 vid[num_collected][i] = self.transform_vid(
                     self.pil_loader(clip[i]))
             #img_t = self.img_trans(self.pil_loader(clip[0]))

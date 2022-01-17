@@ -1,15 +1,14 @@
 # General params
 batch_size: 2
-
-learning_rate: 0.0000005
+learning_rate: 0.00000005
 epochs: 500
-seq_len: 15
+seq_len: 20
 
 clip_len: 1
 frame_len: 1
 
 # Optimisation
-dropout: 0.7
+dropout: 0.5
 momentum: 0.005
 weight_decay: 0.05
 scheduling: True
@@ -30,7 +29,7 @@ data_set: "mmx-frame"
 
 # double_transformer, single_transformer, lstm, frame_transformer
 
-model: "frame_transformer"
+model: "sum"
 logger: "double_transformer"
 name: "mmx-frame-test"
 

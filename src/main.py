@@ -17,7 +17,7 @@ from yaml.loader import SafeLoader
 import torch.nn as nn
 
 
-def main():
+if __name__ == "__main__":
     callbacks = []
     with open('config.yaml') as f:
         data = yaml.load(f, Loader=SafeLoader)
@@ -29,14 +29,13 @@ def main():
     wandb_logger = WandbLogger(
         project=config["logger"])
 
-
     if config["model"] == "ptn" or config["model"] == "ptn_shared":
         model = SimpleTransformer(**config)
     elif config["model"] == "lstm":
         model = LSTMRegressor(seq_len=200, batch_size=64,
                               criterion=nn.BCELoss(), n_features=4608, hidden_size=512, num_layers=4,
                               dropout=0.2, learning_rate=0.00005)
-    elif config["model"] == "frame_transformer":
+    elif config["model"] == "frame_transformer" or config["model"] == "distil" or config["model"] == "sum":
         model = FrameTransformer(**config)
 
     if config["data_set"] == "mit":
@@ -80,14 +79,10 @@ def main():
 
     weights_init_normal(model)
 
-    trainer = pl.Trainer(gpus=[0], callbacks=callbacks,logger=wandb_logger, accumulate_grad_batches=32, max_epochs=2000)
+    trainer = pl.Trainer(gpus=1, logger=wandb_logger, callbacks=callbacks, accumulate_grad_batches=12,
+                         gradient_clip_val=0.8, max_epochs=50, precision=16)
 
     trainer.fit(model, datamodule=dm)
     # model = model.load_from_checkpoint(
     #     "trained_models/mmx/double/double-epoch=127-v1.ckpt", **config)
     # trainer.test(model, datamodule=dm)
-
-
-if __name__ == '__main__':
-    # torch.multiprocessing.set_sharing_strategy('file_system')
-    main()
