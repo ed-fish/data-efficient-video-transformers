@@ -1,8 +1,8 @@
 # General params
 batch_size: 2
-learning_rate: 0.00000005
+learning_rate: 0.000005
 epochs: 500
-seq_len: 20
+seq_len: 23
 
 clip_len: 1
 frame_len: 1
@@ -14,6 +14,7 @@ weight_decay: 0.05
 scheduling: True
 warm_up: 2
 n_classes: 15
+opt: "adamW"
 
 # num_samples: 50000
 # Architecure optimisation
@@ -27,9 +28,9 @@ projection_size: 305
 
 data_set: "mmx-frame"
 
-# double_transformer, single_transformer, lstm, frame_transformer
+# double_transformer, single_transformer, lstm, frame_transformer, sum, frame, vid, pre_modal, sum_residual
 
-model: "sum"
+model: "sum_residual"
 logger: "double_transformer"
 name: "mmx-frame-test"
 

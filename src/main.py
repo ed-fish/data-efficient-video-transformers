@@ -35,7 +35,7 @@ if __name__ == "__main__":
         model = LSTMRegressor(seq_len=200, batch_size=64,
                               criterion=nn.BCELoss(), n_features=4608, hidden_size=512, num_layers=4,
                               dropout=0.2, learning_rate=0.00005)
-    elif config["model"] == "frame_transformer" or config["model"] == "distil" or config["model"] == "sum":
+    elif config["model"] == "frame_transformer" or config["model"] == "distil" or config["model"] == "sum" or config["model"] == "frame" or config["model"] == "vid" or config["model"] == "pre_modal" or config["model"] == "sum_residual":
         model = FrameTransformer(**config)
 
     if config["data_set"] == "mit":
@@ -79,8 +79,7 @@ if __name__ == "__main__":
 
     weights_init_normal(model)
 
-    trainer = pl.Trainer(gpus=1, logger=wandb_logger, callbacks=callbacks, accumulate_grad_batches=12,
-                         gradient_clip_val=0.8, max_epochs=50, precision=16)
+    trainer = pl.Trainer(gpus=4, logger=wandb_logger, callbacks=callbacks, strategy="ddp", accumulate_grad_batches=12, max_epochs=50, precision=16)
 
     trainer.fit(model, datamodule=dm)
     # model = model.load_from_checkpoint(

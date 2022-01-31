@@ -116,14 +116,16 @@ class FrameTransformer(pl.LightningModule):
         self.cos = nn.CosineSimilarity(dim=1)
 
     def configure_optimizers(self):
-        # optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.learning_rate,
-        #                             momentum=self.hparams.momentum, weight_decay=self.hparams.weight_decay)
-
-        optimizer = torch.optim.AdamW(self.parameters(
-        ), lr=self.hparams.learning_rate, weight_decay=self.hparams.weight_decay)
-
-        # optimizer = torch.optim.Adagrad(self.parameters(
-        # ), lr=self.hparams.learning_rate, weight_decay=self.hparams.weight_decay)
+        if self.hparams.opt == "sgd":
+            optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.learning_rate,
+                                        momentum=self.hparams.momentum, weight_decay=self.hparams.weight_decay)
+        elif self.hparams.opt == "adamW":
+            optimizer = torch.optim.AdamW(self.parameters(
+            ), lr=self.hparams.learning_rate, weight_decay=self.hparams.weight_decay)
+        
+        elif self.hparams.opt == "adagrad":
+            optimizer = torch.optim.Adagrad(self.parameters(
+            ), lr=self.hparams.learning_rate, weight_decay=self.hparams.weight_decay)
         return optimizer
 
     def forward(self, img, vid):
@@ -135,18 +137,44 @@ class FrameTransformer(pl.LightningModule):
 
         if self.hparams.model == "sum":
             img, vid = self.distillation_step(img, vid)
-            vid = torch.cat((img, vid), dim=-1)
-            output = F.glu(vid)
+            output = img + vid
             output = self.img_mlp_head(output)
             return output
-        else:
-            img_cls = self.img_step(img)
+        
+        if self.hparams.model == "sum_residual":
+            vid_cls = self.vid_step(vid)
+            img_cls = self.img_step(img, vid_cls)
+            output = img_cls + vid_cls
+            output = self.img_mlp_head(output)
+            return output
+
+        if self.hparams.model == "post_sum":
+            img, vid, vid_cls = self.distillation_step(img, vid)
+            output = img + vid_cls
+            output = self.img_mlp_head(output)
+            return output
+
+        if self.hparams.model == "frame":
+            img_cls = self.img_step(img, None) 
             return img_cls
+ 
+        if self.hparams.model == "pre_modal":
+            img_cls = self.pre_modal(img, vid) 
+            return img_cls
+
+        if self.hparams.model == "vid":
+            vid_cls = self.vid_step(vid) 
+            return vid_cls
 
     def distillation_step(self, img, vid):
         vid_cls = self.vid_step(vid)
         img_cls, vid_tkn = self.img_step(img, vid_cls)
         return img_cls, vid_tkn
+
+    def pre_modal(self, img, vid):
+        vid = self.vid_step
+        img_cls = self.img_step(img, vid)
+        return img_cls
 
     def vid_step(self, data):
         total = []
@@ -157,14 +185,15 @@ class FrameTransformer(pl.LightningModule):
         data = data.view(-1, 12, 3,  112, 112)
         data = data.permute(0, 2, 1, 3, 4)
         data = self.vid_model(data)
+        if self.hparams.model == "pre-modal":
+            return data
         data = data.view(self.hparams.batch_size, self.hparams.seq_len, -1)
         data = data.permute(1, 0, 2)
         data = self.position_encoder(data)
         data = self.distil_transformer(data)
         data = data.permute(1, 0, 2)
-        cls = data[:, 0]
-        cls = cls.unsqueeze(0)
-        return cls
+        vid_cls = data[:, 0]
+        return vid_cls
 
     def img_step(self, data, distil_inject):
         total = []
@@ -174,6 +203,8 @@ class FrameTransformer(pl.LightningModule):
         data = torch.stack(total)
         data = data.view(-1, 3, 224, 224)
         data = self.img_model(data)
+        if self.hparams.model == "pre-modal":
+            data = data + distil_inject
         # data = [batch + cls, dim]
         data = data.view(self.hparams.batch_size, self.hparams.seq_len, -1)
         data = data.permute(1, 0, 2)
@@ -192,17 +223,15 @@ class FrameTransformer(pl.LightningModule):
         if self.hparams.model == "sum":
             dis_tkn = img_seq[:, -1]
             return cls, dis_tkn
+        if self.hparams.model == "sum_residual":
+            return cls
         else:
             cls = self.img_mlp_head(cls)
             return cls
 
     def training_step(self, batch, batch_idx):
-        target, img, vid = batch
-        # img = img.float()
-        vid = vid.float()
-        # target = self.label_tidy(target)
-        # save_image(grid, "test.png")
         if self.hparams.model == "distil":
+            target, img, vid = batch
             img, vid = self(img, vid)
             distil_loss = self.distil_criterion(img, torch.argmax(vid, dim=-1))
             base_loss = self.criterion(img, target)
@@ -214,13 +243,21 @@ class FrameTransformer(pl.LightningModule):
             self.log("train/cossim", self.cos(img, vid)[0],
                      on_step=True, on_epoch=True)
             data = img
-        if self.hparams.model == "sum":
+        if self.hparams.model == "sum" or self.hparams.model == "pre_modal" or self.hparams.model == "sum_residual":
+            target, img, vid = batch
             data = self(img, vid)
             loss = self.criterion(data, target)
-        else:
-            data = self(img, vid)
+        if self.hparams.model == "frame":
+            target, img = batch
+            data = self(img, None)
             target = target.float()
             loss = self.criterion(data, target)
+        if self.hparams.model == "vid":
+            target, vid = batch
+            data = self(None, vid)
+            target = target.float()
+            loss = self.criterion(data, target)
+
         target = target.int()
         self.train_auroc(data, target)
         self.train_aprc(data, target)
@@ -239,14 +276,6 @@ class FrameTransformer(pl.LightningModule):
         return labels
 
     def validation_step(self, batch, batch_idx):
-
-        target, img, vid = batch
-        # img = img.float()
-        vid = vid.float()
-
-        # target = self.label_tidy(target)
-        # grid = make_grid(data[0], nrow=10)
-
         if self.hparams.model == "distil":
             img, vid = self(img, vid)
             distil_loss = self.distil_criterion(img, torch.argmax(vid, dim=-1))
@@ -258,11 +287,18 @@ class FrameTransformer(pl.LightningModule):
                      on_step=True, on_epoch=True)
             loss = base_loss + distil_loss
             data = img
-        if self.hparams.model == "sum":
+        elif self.hparams.model == "sum" or self.hparams.model == "pre_modal" or self.hparams.model == "sum_residual":
+            target, img, vid = batch
             data = self(img, vid)
             loss = self.criterion(data, target)
-        else:
-            data = self(img, vid)
+        elif self.hparams.model == "frame":
+            target, img = batch
+            data = self(img, None)
+            target = target.float()
+            loss = self.criterion(data, target)
+        elif self.hparams.model == "vid":
+            target, vid = batch
+            data = self(None, vid)
             target = target.float()
             loss = self.criterion(data, target)
 

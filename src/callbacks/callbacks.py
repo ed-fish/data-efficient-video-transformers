@@ -31,8 +31,6 @@ class TransformerEval(Callback):
         state = "val"
         running_labels = torch.cat(pl_module.running_labels).cpu()
         running_logits = torch.cat(pl_module.running_logits).cpu()
-        print(running_labels)
-        print(running_logits)
         t = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
         for threshold in t:
             accuracy = f1_score(running_labels.to(int), (running_logits > threshold).to(
