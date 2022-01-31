@@ -3,6 +3,7 @@ batch_size: 2
 learning_rate: 0.000005
 epochs: 500
 seq_len: 23
+test: True
 
 clip_len: 1
 frame_len: 1

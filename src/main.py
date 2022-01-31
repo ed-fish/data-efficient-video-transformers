@@ -58,7 +58,11 @@ if __name__ == "__main__":
         transformer_callback = TransformerEval()
         dm = MMXFrameDataModule("data/mmx/frames/mmx_train_temporal_frames.pkl",
                                 "data/mmx/frames/mmx_val_temporal_frames.pkl", config)
-        callbacks = [transformer_callback]
+        if config["test"]:
+            display = DisplayResults()
+            callbacks = [display]
+        else:
+            callbacks = [transformer_callback]
 
     else:
         assert(
@@ -77,11 +81,11 @@ if __name__ == "__main__":
         # m.bias.data should be 0
             m.bias.data.fill_(0)
 
-    weights_init_normal(model)
+    # weights_init_normal(model)
 
-    trainer = pl.Trainer(gpus=4, logger=wandb_logger, callbacks=callbacks, strategy="ddp", accumulate_grad_batches=12, max_epochs=50, precision=16)
+    trainer = pl.Trainer(gpus=1, logger=wandb_logger, callbacks=callbacks, accumulate_grad_batches=12, max_epochs=50, precision=16)
 
-    trainer.fit(model, datamodule=dm)
+    # trainer.fit(model, datamodule=dm)
     # model = model.load_from_checkpoint(
     #     "trained_models/mmx/double/double-epoch=127-v1.ckpt", **config)
-    # trainer.test(model, datamodule=dm)
+    trainer.test(model, datamodule=dm)

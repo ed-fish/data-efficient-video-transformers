@@ -10,6 +10,7 @@ from einops import rearrange
 import wandb
 from models import custom_resnet
 from torchvision.utils import make_grid, save_image
+import pickle as pkl
 
 
 class PositionalEncoding(pl.LightningModule):
@@ -318,3 +319,30 @@ class FrameTransformer(pl.LightningModule):
         self.log("val/auroc", self.val_auroc, on_step=True, on_epoch=True)
         self.log("val/aprc", self.val_aprc, on_step=True, on_epoch=True)
         return loss
+
+
+    def test_step(self, batch, batch_idx):
+        if self.hparams.model == "distil":
+            img, vid = self(img, vid)
+            data = img
+        elif self.hparams.model == "sum" or self.hparams.model == "pre_modal" or self.hparams.model == "sum_residual":
+            target, img, vid = batch
+            data = self(img, vid)
+        elif self.hparams.model == "frame":
+            target, img = batch
+            data = self(img, None)
+            target = target.float()
+        elif self.hparams.model == "vid":
+            target, vid = batch
+            data = self(None, vid)
+            target = target.float()
+
+        target = target.int()
+        sig_data = F.sigmoid(data)
+        self.running_logits.append(sig_data)
+        self.running_labels.append(target)
+        format_target = self.translate_labels(target[0])
+        format_logits = self.translate_labels((sig_data[0] > 0.2).to(int))
+        images = wandb.Image(
+            grid, caption=f"predicted: {format_logits}, actual {format_target}")
+        self.logger.experiment.log({"examples": images})

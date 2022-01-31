@@ -46,6 +46,7 @@ class MMXFrameDataModule(pl.LightningDataModule):
 
         data_frame = pd.DataFrame(data)
         data_frame = data_frame.reset_index(drop=True)
+        data_frame = data_frame.head(500)
         print("length of data", len(data_frame))
         return data_frame
 
@@ -54,10 +55,10 @@ class MMXFrameDataModule(pl.LightningDataModule):
         self.val_data = self.load_data(self.val_data)
 
     def train_dataloader(self):
-        return DataLoader(MMXFrameDataset(self.train_data, self.config, state="train"), self.bs,  shuffle=True, num_workers=5, drop_last=True)
+        return DataLoader(MMXFrameDataset(self.train_data, self.config, state="train"), self.bs,  shuffle=True, num_workers=0, drop_last=True)
 
     def val_dataloader(self):
-        return DataLoader(MMXFrameDataset(self.val_data, self.config, state="val"), self.bs, shuffle=False, num_workers=5, drop_last=True)
+        return DataLoader(MMXFrameDataset(self.val_data, self.config, state="val"), self.bs, shuffle=False, num_workers=0, drop_last=True)
 
     def test_dataloader(self):
         return DataLoader(MMXFrameDataset(self.val_data, self.config, state="test"), self.bs, shuffle=False, drop_last=True)
@@ -146,6 +147,7 @@ class MMXFrameDataset(Dataset):
                 for i in range(12):
                     vid[num_collected][i] = self.transform_vid(
                         self.pil_loader(clip[i]))
+            print(clip[0])
             img_t = self.img_trans(self.pil_loader(clip[0]))
             img_list[num_collected] = img_t
             #img_list = []
