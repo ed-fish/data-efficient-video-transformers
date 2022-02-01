@@ -96,6 +96,8 @@ class FrameTransformer(pl.LightningModule):
         self.distil_transformer = TransformerBase(896, 896, 8, 896, 8, 0.5)
         self.running_labels = []
         self.running_logits = []
+        self.running_paths = []
+        self.running_embeds = []
         self.img_cls = nn.Parameter(torch.rand(1, 3, 224, 224))
         self.vid_cls = nn.Parameter(torch.rand(1, 12, 3, 112, 112))
         self.img_mlp_head = nn.Sequential(
@@ -145,9 +147,9 @@ class FrameTransformer(pl.LightningModule):
         if self.hparams.model == "sum_residual":
             vid_cls = self.vid_step(vid)
             img_cls = self.img_step(img, vid_cls)
-            output = img_cls + vid_cls
-            output = self.img_mlp_head(output)
-            return output
+            embed = img_cls + vid_cls
+            output = self.img_mlp_head(embed)
+            return output, embed
 
         if self.hparams.model == "post_sum":
             img, vid, vid_cls = self.distillation_step(img, vid)
@@ -232,7 +234,7 @@ class FrameTransformer(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         if self.hparams.model == "distil":
-            target, img, vid = batch
+            target, img, vid, path = batch
             img, vid = self(img, vid)
             distil_loss = self.distil_criterion(img, torch.argmax(vid, dim=-1))
             base_loss = self.criterion(img, target)
@@ -245,16 +247,16 @@ class FrameTransformer(pl.LightningModule):
                      on_step=True, on_epoch=True)
             data = img
         if self.hparams.model == "sum" or self.hparams.model == "pre_modal" or self.hparams.model == "sum_residual":
-            target, img, vid = batch
+            target, img, vid, path = batch
             data = self(img, vid)
             loss = self.criterion(data, target)
         if self.hparams.model == "frame":
-            target, img = batch
+            target, img, path = batch
             data = self(img, None)
             target = target.float()
             loss = self.criterion(data, target)
         if self.hparams.model == "vid":
-            target, vid = batch
+            target, vid, path = batch
             data = self(None, vid)
             target = target.float()
             loss = self.criterion(data, target)
@@ -278,7 +280,7 @@ class FrameTransformer(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         if self.hparams.model == "distil":
-            img, vid = self(img, vid)
+            img, vid, path = self(img, vid)
             distil_loss = self.distil_criterion(img, torch.argmax(vid, dim=-1))
             base_loss = self.criterion(img, target)
             self.log("val/distilloss", distil_loss,
@@ -289,16 +291,16 @@ class FrameTransformer(pl.LightningModule):
             loss = base_loss + distil_loss
             data = img
         elif self.hparams.model == "sum" or self.hparams.model == "pre_modal" or self.hparams.model == "sum_residual":
-            target, img, vid = batch
+            target, img, vid, path = batch
             data = self(img, vid)
             loss = self.criterion(data, target)
         elif self.hparams.model == "frame":
-            target, img = batch
+            target, img, path = batch
             data = self(img, None)
             target = target.float()
             loss = self.criterion(data, target)
         elif self.hparams.model == "vid":
-            target, vid = batch
+            target, vid, path = batch
             data = self(None, vid)
             target = target.float()
             loss = self.criterion(data, target)
@@ -323,26 +325,23 @@ class FrameTransformer(pl.LightningModule):
 
     def test_step(self, batch, batch_idx):
         if self.hparams.model == "distil":
-            img, vid = self(img, vid)
+            img, vid, path = self(img, vid)
             data = img
         elif self.hparams.model == "sum" or self.hparams.model == "pre_modal" or self.hparams.model == "sum_residual":
-            target, img, vid = batch
-            data = self(img, vid)
+            target, img, vid, path = batch
+            data, embed = self(img, vid)
         elif self.hparams.model == "frame":
-            target, img = batch
+            target, img, path = batch
             data = self(img, None)
             target = target.float()
         elif self.hparams.model == "vid":
-            target, vid = batch
+            target, vid, path = batch
             data = self(None, vid)
             target = target.float()
 
         target = target.int()
         sig_data = F.sigmoid(data)
         self.running_logits.append(sig_data)
+        self.running_embeds.append(data)
         self.running_labels.append(target)
-        format_target = self.translate_labels(target[0])
-        format_logits = self.translate_labels((sig_data[0] > 0.2).to(int))
-        images = wandb.Image(
-            grid, caption=f"predicted: {format_logits}, actual {format_target}")
-        self.logger.experiment.log({"examples": images})
+        self.running_paths.append(path)

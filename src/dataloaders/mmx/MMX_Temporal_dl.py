@@ -82,7 +82,7 @@ class MMXDataModule(pl.LightningDataModule):
         data_frame = pd.DataFrame(data)
         print("data loaded")
         print("length", len(data_frame))
-        data_frame = data_frame.head(1000)
+        data_frame = data_frame.head(10)
         return data_frame
 
     def setup(self, stage):

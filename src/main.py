@@ -83,9 +83,8 @@ if __name__ == "__main__":
 
     # weights_init_normal(model)
 
-    trainer = pl.Trainer(gpus=1, logger=wandb_logger, callbacks=callbacks, accumulate_grad_batches=12, max_epochs=50, precision=16)
+    trainer = pl.Trainer(gpus=4, strategy="ddp", logger=wandb_logger, callbacks=callbacks, accumulate_grad_batches=4, max_epochs=50)
+    model = model.load_from_checkpoint("transformer-frame-video/29qsys9i/checkpoints/epoch=33-step=1971.ckpt")
 
-    # trainer.fit(model, datamodule=dm)
-    # model = model.load_from_checkpoint(
-    #     "trained_models/mmx/double/double-epoch=127-v1.ckpt", **config)
-    trainer.test(model, datamodule=dm)
+    trainer.fit(model, datamodule=dm)
+    #trainer.test(model, datamodule=dm, ckpt_path="transformer-frame-video/29qsys9i/checkpoints/epoch=33-step=1971.ckpt")

@@ -1,6 +1,6 @@
 # General params
-batch_size: 2
-learning_rate: 0.000005
+batch_size: 3
+learning_rate: 0.0000005
 epochs: 500
 seq_len: 23
 test: True
@@ -9,9 +9,9 @@ clip_len: 1
 frame_len: 1
 
 # Optimisation
-dropout: 0.5
+dropout: 0.6
 momentum: 0.005
-weight_decay: 0.05
+weight_decay: 0.09
 scheduling: True
 warm_up: 2
 n_classes: 15
