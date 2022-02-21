@@ -80,9 +80,9 @@ class MMXDataModule(pl.LightningDataModule):
                     break
 
         data_frame = pd.DataFrame(data)
+        #data_frame = data_frame.head(2000)
         print("data loaded")
         print("length", len(data_frame))
-        data_frame = data_frame.head(10)
         return data_frame
 
     def setup(self, stage):
@@ -93,10 +93,10 @@ class MMXDataModule(pl.LightningDataModule):
         self.val_data = self.clean_data(self.val_data)
 
     def train_dataloader(self):
-        return DataLoader(MMXDataset(self.train_data, self.config, state="train"), self.bs, shuffle=True, num_workers=15, drop_last=True)
+        return DataLoader(MMXDataset(self.train_data, self.config, state="train"), self.bs, shuffle=True, num_workers=2, drop_last=True)
 
     def val_dataloader(self):
-        return DataLoader(MMXDataset(self.val_data, self.config, state="val"), self.bs, shuffle=False, num_workers=15, drop_last=True)
+        return DataLoader(MMXDataset(self.val_data, self.config, state="val"), self.bs, shuffle=False, num_workers=2, drop_last=True)
 
     def test_dataloader(self):
         return DataLoader(MMXDataset(self.val_data, self.config, state="test"), self.bs, shuffle=False, collate_fn=self.custom_collater, drop_last=True)
