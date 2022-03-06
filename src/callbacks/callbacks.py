@@ -11,11 +11,12 @@ from pytorch_lightning.callbacks import Callback
 import pandas as pd
 import torchmetrics
 import sklearn
-from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
+from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix, classification_report
 import numpy as np
 import wandb
 import matplotlib.pyplot as plt
 import seaborn as sns
+import pickle
 
 from sklearn.metrics import f1_score, recall_score, average_precision_score, precision_score
 from torchmetrics.functional import f1, auroc
@@ -26,8 +27,9 @@ from torchmetrics.functional import f1, auroc
 class TransformerEval(Callback):
 
     def on_validation_epoch_end(self, trainer, pl_module):
-        target_names = ['Action', 'Adventure', 'Comedy', 'Crime', 'Documentary', 'Drama', 'Family',
-                        'Fantasy', 'History', 'Horror', 'Music', 'Mystery', 'Science Fiction', 'Thriller',  'War']
+
+        target_names = ['Action', 'Animation', 'Adventure', 'Comedy', 'Crime', 'Documentary', 'Drama', 'Family',
+                        'Fantasy', 'History', 'Horror', 'Music', 'Romance', 'Mystery', 'TVMovie', 'ScienceFiction', 'Thriller',  'War', 'Western']
         state = "val"
         running_labels = torch.cat(pl_module.running_labels).cpu()
         running_logits = torch.cat(pl_module.running_logits).cpu()
@@ -44,19 +46,40 @@ class TransformerEval(Callback):
             #pl_module.log(f"{state}/online/precision@{str(threshold)}", precision, on_epoch=True)
             #pl_module.log(f"{state}/online/avg_precision@{str(threshold)}", avg_precision, on_epoch=True)
 
-        aprc = average_precision_score(running_labels.to(
+        aprc_samples = average_precision_score(running_labels.to(
             int), running_logits, average="samples")
-        pl_module.log("sklearn apr", aprc)
+        pl_module.log("sklearn apr", aprc_samples)
 
-        aprc = average_precision_score(running_labels.to(
+        aprc_weight = average_precision_score(running_labels.to(
             int), running_logits, average="weighted")
-        pl_module.log("sklearn apr weighted", aprc)
+        pl_module.log("sklearn apr weighted", aprc_weight)
+
+        print(aprc_samples)
+        print(aprc_weight)
+        print(classification_report(running_labels.to(int), (running_logits > 0.3).to(int), target_names=target_names))
 
         pl_module.running_labels = []
         pl_module.running_logits = []
 
         label_str = []
         target_str = []
+
+    def on_test_epoch_end(self, trainer, pl_module):
+
+        target_names = ['Action', 'Animation', 'Adventure', 'Comedy', 'Crime', 'Documentary', 'Drama', 'Family',
+                        'Fantasy', 'History', 'Horror', 'Music', 'Romance', 'Mystery', 'TVMovie', 'ScienceFiction', 'Thriller',  'War', 'Western']
+
+       
+        state = "val"
+        running_labels = torch.cat(pl_module.running_labels).cpu()
+        running_logits = torch.cat(pl_module.running_logits).cpu()
+        with open("labels", "wb") as fp:
+            pickle.dump(running_labels, fp) 
+        with open("logits", "wb") as fp:
+            pickle.dump(running_labels, fp)
+        running_labels = running_labels.to(int)
+        running_logits = (running_logits > 0.3).to(int)
+        print(classification_report(running_labels, running_logits, target_names=target_names))
 
 
 class MITEval(Callback):
@@ -251,7 +274,7 @@ class SSLOnlineEval(Callback):
                           avg_precision, on_epoch=True)
 
         running_labels = running_labels.to(int).numpy()
-        running_logits = (running_logits > 0.1).to(int).numpy()
+        running_logits = (running_logits > 0.3).to(int).numpy()
 
         pl_module.running_labels = []
         pl_module.running_logits = []

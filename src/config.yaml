@@ -1,15 +1,13 @@
 # General params
-batch_size: 3
-learning_rate: 0.0000005
+batch_size: 2
+learning_rate: 0.000005
 epochs: 500
-seq_len: 23
-test: True
-
-clip_len: 1
-frame_len: 1
+seq_len: 13
+frame_len: 12
+test: False
 
 # Optimisation
-dropout: 0.6
+dropout: 0.5
 momentum: 0.005
 weight_decay: 0.09
 scheduling: True
@@ -26,12 +24,11 @@ token_embedding: 305
 nlayers: 8
 nhid: 2048
 projection_size: 305
-
 data_set: "mmx-frame"
 
 # double_transformer, single_transformer, lstm, frame_transformer, sum, frame, vid, pre_modal, sum_residual
 
-model: "sum_residual"
+model: "vid"
 logger: "double_transformer"
 name: "mmx-frame-test"
 

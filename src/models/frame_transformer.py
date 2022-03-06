@@ -11,6 +11,9 @@ import wandb
 from models import custom_resnet
 from torchvision.utils import make_grid, save_image
 import pickle as pkl
+from pytorch_grad_cam import GradCAM, ScoreCAM, GradCAMPlusPlus, AblationCAM, XGradCAM, EigenCAM, FullGrad
+from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
+from pytorch_grad_cam.utils.image import show_cam_on_image
 
 
 class PositionalEncoding(pl.LightningModule):
@@ -53,9 +56,9 @@ class ImgResNet(pl.LightningModule):
 
     def forward(self, x):
         # self.feature_extractor.eval()
-        # with torch.no_grad():
-        representations = self.backbone(x)
-        return representations
+        with torch.no_grad():
+            representations = self.backbone(x)
+            return representations
 
 
 class VidResNet(pl.LightningModule):
@@ -66,7 +69,7 @@ class VidResNet(pl.LightningModule):
         self.backbone.fc = nn.Sequential(nn.Linear(num_filters, 896))
 
     def forward(self, x):
-        # with torch.no_grad():
+        #with torch.no_grad():
         representations = self.backbone(x)
         return representations
 
@@ -87,34 +90,33 @@ class FrameTransformer(pl.LightningModule):
         self.distil_criterion = nn.CrossEntropyLoss()
         self.position_encoder = PositionalEncoding(
             896, 0.5,
-            max_len=50)
-        self.img_model = ImgResNet()
+            max_len=14)
+        #self.img_model = ImgResNet()
         self.vid_model = VidResNet()
         # self.cls_token = nn.Parameter(
         #     torch.randn(1, 1, self.hparams.input_dimension))
-        self.scene_transformer = TransformerBase(896, 896, 8, 896, 8, 0.5)
-        self.distil_transformer = TransformerBase(896, 896, 8, 896, 8, 0.5)
+        #self.scene_transformer = TransformerBase(896, 896, 4, 896, 4, 0.5)
+        self.distil_transformer = TransformerBase(896, 128, 2, 512, 4, 0.5)
         self.running_labels = []
         self.running_logits = []
         self.running_paths = []
         self.running_embeds = []
-        self.img_cls = nn.Parameter(torch.rand(1, 3, 224, 224))
+        #self.img_cls = nn.Parameter(torch.rand(1, 3, 224, 224))
         self.vid_cls = nn.Parameter(torch.rand(1, 12, 3, 112, 112))
-        self.img_mlp_head = nn.Sequential(
-            nn.LayerNorm(896), nn.Linear(896, 15))
-        self.vid_mlp_head = nn.Sequential(
-            nn.LayerNorm(896), nn.Linear(896, 15))
+        self.img_mlp_head = nn.Sequential(nn.Linear(896, 512), nn.GELU(), nn.Linear(512, 128),nn.GELU(), nn.Linear(128, 19))
+        #self.vid_mlp_head = nn.Sequential(
+            #nn.LayerNorm(896), nn.Linear(896, 19))
         # self.decoder = nn.Sequential(nn.Linear(75, 32), nn.GELU(), nn.Dropout(
         # 0.5), nn.Linear(32, 32), nn.GELU(), nn.Linear(32, 15))
         # self.encoder = nn.Sequential(nn.Linear(256, 256), nn.Dropout(0.5))
         self.running_logits = []
         self.running_labels = []
-        self.val_auroc = AUROC(num_classes=15)
-        self.train_auroc = AUROC(num_classes=15)
-        self.train_aprc = AveragePrecision(num_classes=15)
+        #self.val_auroc = AUROC(num_classes=19)
+        #self.train_auroc = AUROC(num_classes=19)
+        self.train_aprc = AveragePrecision(num_classes=19)
         self.norm = nn.LayerNorm(896)
         # self.tpn = TPN()
-        self.val_aprc = AveragePrecision(num_classes=15)
+        self.val_aprc = AveragePrecision(num_classes=19)
         # self.pool = nn.AdaptiveAvgPool2d((1, 15))
         self.cos = nn.CosineSimilarity(dim=1)
 
@@ -125,7 +127,7 @@ class FrameTransformer(pl.LightningModule):
         elif self.hparams.opt == "adamW":
             optimizer = torch.optim.AdamW(self.parameters(
             ), lr=self.hparams.learning_rate, weight_decay=self.hparams.weight_decay)
-        
+
         elif self.hparams.opt == "adagrad":
             optimizer = torch.optim.Adagrad(self.parameters(
             ), lr=self.hparams.learning_rate, weight_decay=self.hparams.weight_decay)
@@ -143,13 +145,20 @@ class FrameTransformer(pl.LightningModule):
             output = img + vid
             output = self.img_mlp_head(output)
             return output
-        
+
         if self.hparams.model == "sum_residual":
             vid_cls = self.vid_step(vid)
-            img_cls = self.img_step(img, vid_cls)
+            img_cls, seq = self.img_step(img, vid_cls)
+            embed_list = []
+            # for s in seq:
+            #     s = self.img_mlp_head(s)
+            #     embed_list.append(s)
+            # return embed_list
+            img_cls = F.normalize(img_cls, p=2.0, dim=-1)
+            vid_cls = F.normalize(img_cls, p=2.0, dim=-1)
             embed = img_cls + vid_cls
             output = self.img_mlp_head(embed)
-            return output, embed
+            return output
 
         if self.hparams.model == "post_sum":
             img, vid, vid_cls = self.distillation_step(img, vid)
@@ -158,15 +167,16 @@ class FrameTransformer(pl.LightningModule):
             return output
 
         if self.hparams.model == "frame":
-            img_cls = self.img_step(img, None) 
+            img_cls = self.img_step(img, None)
             return img_cls
- 
+
         if self.hparams.model == "pre_modal":
-            img_cls = self.pre_modal(img, vid) 
+            img_cls = self.pre_modal(img, vid)
             return img_cls
 
         if self.hparams.model == "vid":
-            vid_cls = self.vid_step(vid) 
+            vid_cls = self.vid_step(vid)
+            vid_cls = self.img_mlp_head(vid_cls)
             return vid_cls
 
     def distillation_step(self, img, vid):
@@ -188,9 +198,10 @@ class FrameTransformer(pl.LightningModule):
         data = data.view(-1, 12, 3,  112, 112)
         data = data.permute(0, 2, 1, 3, 4)
         data = self.vid_model(data)
+
         if self.hparams.model == "pre-modal":
             return data
-        data = data.view(self.hparams.batch_size, self.hparams.seq_len, -1)
+        data = data.view(self.hparams.batch_size, 14, 896)
         data = data.permute(1, 0, 2)
         data = self.position_encoder(data)
         data = self.distil_transformer(data)
@@ -227,14 +238,14 @@ class FrameTransformer(pl.LightningModule):
             dis_tkn = img_seq[:, -1]
             return cls, dis_tkn
         if self.hparams.model == "sum_residual":
-            return cls
+            return cls, img_seq
         else:
             cls = self.img_mlp_head(cls)
             return cls
 
     def training_step(self, batch, batch_idx):
         if self.hparams.model == "distil":
-            target, img, vid, path = batch
+            target, img, vid = batch
             img, vid = self(img, vid)
             distil_loss = self.distil_criterion(img, torch.argmax(vid, dim=-1))
             base_loss = self.criterion(img, target)
@@ -247,26 +258,27 @@ class FrameTransformer(pl.LightningModule):
                      on_step=True, on_epoch=True)
             data = img
         if self.hparams.model == "sum" or self.hparams.model == "pre_modal" or self.hparams.model == "sum_residual":
-            target, img, vid, path = batch
+            target, img, vid = batch
             data = self(img, vid)
             loss = self.criterion(data, target)
         if self.hparams.model == "frame":
-            target, img, path = batch
+            target, img, vid = batch
             data = self(img, None)
             target = target.float()
             loss = self.criterion(data, target)
         if self.hparams.model == "vid":
-            target, vid, path = batch
+            target, img, vid = batch
             data = self(None, vid)
             target = target.float()
             loss = self.criterion(data, target)
 
         target = target.int()
-        self.train_auroc(data, target)
+        #self.train_auroc(data, target)
         self.train_aprc(data, target)
-        self.log("train/loss", loss, on_step=True, on_epoch=True)
-        self.log("train/auroc", self.train_auroc, on_step=True, on_epoch=True)
-        self.log("train/aprc", self.train_aprc, on_step=True, on_epoch=True)
+        self.log("train/loss", loss, on_step=False, on_epoch=True)
+        
+        #self.log("train/auroc", self.train_auroc, on_step=True, on_epoch=True)
+        self.log("train/aprc", self.train_aprc, on_step=False, on_epoch=True)
         return loss
 
     def translate_labels(self, label_vec):
@@ -280,7 +292,7 @@ class FrameTransformer(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         if self.hparams.model == "distil":
-            img, vid, path = self(img, vid)
+            img, vid = self(img, vid)
             distil_loss = self.distil_criterion(img, torch.argmax(vid, dim=-1))
             base_loss = self.criterion(img, target)
             self.log("val/distilloss", distil_loss,
@@ -291,16 +303,26 @@ class FrameTransformer(pl.LightningModule):
             loss = base_loss + distil_loss
             data = img
         elif self.hparams.model == "sum" or self.hparams.model == "pre_modal" or self.hparams.model == "sum_residual":
-            target, img, vid, path = batch
+            target = batch[0]['label'].reshape(self.hparams.batch_size,-1,  19)
+            target = target[:, 0, :]
+            vid = batch[0]['data']
+            vid = vid.reshape(self.hparams.batch_size, self.hparams.seq_len -1, self.hparams.frame_len, 3, 112, 112)
+
             data = self(img, vid)
             loss = self.criterion(data, target)
         elif self.hparams.model == "frame":
-            target, img, path = batch
+            target, img, vid = batch
             data = self(img, None)
             target = target.float()
             loss = self.criterion(data, target)
         elif self.hparams.model == "vid":
-            target, vid, path = batch
+            target, img, vid = batch
+            #target = batch[0]['label'].reshape(self.hparams.batch_size,-1,  19)
+            #target = target[:, 0, :]
+            #vid = batch[0]['data']
+            #print(vid.shape)
+            #print(target.shape)
+            #vid = vid.reshape(self.hparams.batch_size, self.hparams.seq_len - 1, self.hparams.frame_len, 3, 112, 112)
             data = self(None, vid)
             target = target.float()
             loss = self.criterion(data, target)
@@ -309,39 +331,38 @@ class FrameTransformer(pl.LightningModule):
         sig_data = F.sigmoid(data)
         self.running_logits.append(sig_data)
         self.running_labels.append(target)
-        format_target = self.translate_labels(target[0])
-        format_logits = self.translate_labels((sig_data[0] > 0.2).to(int))
+        #format_target = self.translate_labels(target[0])
+        #format_logits = self.translate_labels((sig_data[0] > 0.2).to(int))
         # images = wandb.Image(
         #     grid, caption=f"predicted: {format_logits}, actual {format_target}")
         # self.logger.experiment.log({"examples": images})
-        self.val_auroc(data, target)
+        #self.val_auroc(data, target)
         self.val_aprc(data, target)
         # self.val_f1_2(data, target)
-        self.log("val/loss", loss, on_step=True, on_epoch=True)
-        self.log("val/auroc", self.val_auroc, on_step=True, on_epoch=True)
-        self.log("val/aprc", self.val_aprc, on_step=True, on_epoch=True)
+        self.log("val/loss", loss, on_epoch=True)
+        #self.log("val/auroc", self.val_auroc, on_step=True, on_epoch=True)
+        self.log("val/aprc", self.val_aprc, on_step=False, on_epoch=True)
         return loss
-
 
     def test_step(self, batch, batch_idx):
         if self.hparams.model == "distil":
             img, vid, path = self(img, vid)
             data = img
         elif self.hparams.model == "sum" or self.hparams.model == "pre_modal" or self.hparams.model == "sum_residual":
-            target, img, vid, path = batch
-            data, embed = self(img, vid)
+            target, img, vid = batch
+            embed = self(img, vid)
         elif self.hparams.model == "frame":
             target, img, path = batch
             data = self(img, None)
             target = target.float()
         elif self.hparams.model == "vid":
-            target, vid, path = batch
+            target, img, vid = batch
             data = self(None, vid)
             target = target.float()
 
         target = target.int()
-        sig_data = F.sigmoid(data)
-        self.running_logits.append(sig_data)
-        self.running_embeds.append(data)
+        self.running_logits.append(F.sigmoid(data))
+        # self.running_embeds.append(data)
         self.running_labels.append(target)
-        self.running_paths.append(path)
+        # self.running_paths.append(path)
+
